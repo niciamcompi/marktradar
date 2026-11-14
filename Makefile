@@ -1,4 +1,4 @@
-.PHONY: install lint test pipeline serve docker
+.PHONY: install lint test pipeline update serve docker
 
 install:          ## Abhängigkeiten installieren
 	uv sync
@@ -16,7 +16,10 @@ pipeline:         ## Komplette ML-Pipeline auf echten BAG-Daten
 	uv run marktradar build
 	uv run marktradar train
 
-serve:            ## API lokal starten (http://localhost:8000/docs)
+update:           ## Neue BAG-Daten suchen, Live-Güte messen, neu trainieren
+	uv run marktradar update
+
+serve:            ## Oberfläche + API lokal starten (http://localhost:8000)
 	uv run marktradar serve
 
 docker:           ## Image bauen (trainiert im Build) und starten

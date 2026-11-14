@@ -1,0 +1,66 @@
+# Selbstständige Aktualisierung ("Continuous Training"):
+# Jede Woche wird auf der BAG-Seite nach einer neuen Ausgabe der Aufsichtsdaten gesucht.
+# Gibt es eine, wird
+#   1. das aktuelle Produktionsmodell aus der in config.yaml fixierten Datenversion rekonstruiert,
+#   2. dieses Modell an den neuen, nie gesehenen Jahren gemessen (Live-Güte),
+#   3. ein neues Modell trainiert und durch das Quality Gate geschickt,
+#   4. bei Erfolg ein Pull Request mit der neuen Datenversion + Bericht eröffnet.
+# Du entscheidest per Merge, ob die neue Version übernommen wird.
+# Voraussetzung: Settings -> Actions -> General -> "Allow GitHub Actions to create
+# and approve pull requests" aktivieren.
+name: daten-update
+
+on:
+  schedule:
+    - cron: "23 6 * * 1"  # jeden Montag 06:23 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - run: uv sync --frozen
+
+      - name: Produktionsmodell aus fixierter Datenversion rekonstruieren
+        run: |
+          uv run marktradar download
+          uv run marktradar build
+          uv run marktradar train --force
+
+      - name: Nach neuen BAG-Daten suchen und ggf. neu trainieren
+        id: update
+        run: |
+          set +e
+          uv run marktradar update --report report.md
+          echo "exit=$?" >> "$GITHUB_OUTPUT"
+          cat report.md >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: update-${{ github.run_id }}
+          path: |
+            report.md
+            models/
+
+      - name: Pull Request mit neuer Datenversion
+        if: steps.update.outputs.exit == '0'
+        uses: peter-evans/create-pull-request@v7
+        with:
+          branch: auto/daten-update
+          add-paths: config/config.yaml
+          commit-message: "Neue BAG-Aufsichtsdaten übernehmen"
+          title: "Neue BAG-Aufsichtsdaten: Modell neu trainiert"
+          body-path: report.md
+          delete-branch: true
+
+      - name: Kandidat abgelehnt -> Workflow rot, damit du benachrichtigt wirst
+        if: steps.update.outputs.exit == '2'
+        run: |
+          echo "::error::Neues Modell hat das Quality Gate nicht bestanden, siehe Zusammenfassung."
+          exit 1

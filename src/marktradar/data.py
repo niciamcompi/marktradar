@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import hashlib
 import logging
+import re
 from pathlib import Path
 
 import httpx
@@ -49,6 +50,10 @@ def sha256_of(path: Path) -> str:
     return h.hexdigest()
 
 
+def _headers() -> dict[str, str]:
+    return {"User-Agent": f"marktradar/{__version__} (open-data research client)"}
+
+
 def download(url: str, dest: Path, expected_sha256: str | None = None) -> str:
     """Datei herunterladen (atomar) und SHA-256 zurückgeben.
 
@@ -58,8 +63,9 @@ def download(url: str, dest: Path, expected_sha256: str | None = None) -> str:
     dest.parent.mkdir(parents=True, exist_ok=True)
     tmp = dest.with_suffix(dest.suffix + ".part")
     h = hashlib.sha256()
-    headers = {"User-Agent": f"marktradar/{__version__} (open-data research client)"}
-    with httpx.stream("GET", url, headers=headers, follow_redirects=True, timeout=60) as response:
+    with httpx.stream(
+        "GET", url, headers=_headers(), follow_redirects=True, timeout=60
+    ) as response:
         response.raise_for_status()
         with tmp.open("wb") as f:
             for chunk in response.iter_bytes():
@@ -74,6 +80,28 @@ def download(url: str, dest: Path, expected_sha256: str | None = None) -> str:
             digest,
         )
     return digest
+
+
+_DATA_LINK = re.compile(
+    r'(?:https://www\.bag\.admin\.ch)?(/dam/[^"\s]*?aufsichtsdaten-okp-\d{4}-(\d{4})\.xlsx)'
+)
+
+
+def find_latest_data_url(html: str, base: str = "https://www.bag.admin.ch") -> str | None:
+    """Link auf die neuste Ausgabe "aufsichtsdaten-okp-1996-JJJJ.xlsx" in einer HTML-Seite."""
+    matches = [(int(m.group(2)), base + m.group(1)) for m in _DATA_LINK.finditer(html)]
+    return max(matches)[1] if matches else None
+
+
+def discover_latest_url(page_url: str) -> str | None:
+    """BAG-Seite abrufen und den Link auf die neuste Datenausgabe suchen."""
+    try:
+        response = httpx.get(page_url, headers=_headers(), follow_redirects=True, timeout=30)
+        response.raise_for_status()
+    except httpx.HTTPError as exc:
+        log.warning("BAG-Seite nicht erreichbar (%s), nutze konfigurierte URL", exc)
+        return None
+    return find_latest_data_url(response.text)
 
 
 def _find_code_row(sheet: pd.DataFrame, max_rows: int = 20) -> int:

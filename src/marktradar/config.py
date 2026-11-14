@@ -7,6 +7,7 @@ sofort auf und nicht erst mitten im Training.
 from __future__ import annotations
 
 import os
+import re
 from pathlib import Path
 
 import yaml
@@ -17,6 +18,7 @@ DEFAULT_CONFIG = PROJECT_ROOT / "config" / "config.yaml"
 
 
 class DataConfig(BaseModel):
+    discovery_page: str | None = None
     source_url: str
     sha256: str | None = None
     raw_path: Path
@@ -67,9 +69,23 @@ class Settings(BaseModel):
         return self
 
 
+def config_path_from(path: Path | str | None = None) -> Path:
+    return Path(path or os.environ.get("MARKTRADAR_CONFIG") or DEFAULT_CONFIG)
+
+
+def update_data_source(config_path: Path, url: str, sha256: str) -> None:
+    """URL und Prüfsumme in config.yaml ersetzen, ohne Kommentare zu verlieren."""
+    text = config_path.read_text(encoding="utf-8")
+    text, n_url = re.subn(r"(?m)^(\s*source_url:\s*).*$", rf'\g<1>"{url}"', text, count=1)
+    text, n_sha = re.subn(r"(?m)^(\s*sha256:\s*).*$", rf'\g<1>"{sha256}"', text, count=1)
+    if n_url != 1 or n_sha != 1:
+        raise ValueError(f"source_url/sha256 nicht in {config_path} gefunden")
+    config_path.write_text(text, encoding="utf-8")
+
+
 def load_settings(path: Path | str | None = None) -> Settings:
     """Konfiguration laden. Reihenfolge: Argument > $MARKTRADAR_CONFIG > Standard."""
-    config_path = Path(path or os.environ.get("MARKTRADAR_CONFIG") or DEFAULT_CONFIG)
+    config_path = config_path_from(path)
     raw = yaml.safe_load(config_path.read_text(encoding="utf-8"))
     settings = Settings.model_validate(raw)
     return settings.resolve_paths(config_path.resolve().parent.parent)

@@ -12,14 +12,15 @@ from __future__ import annotations
 
 import json
 import logging
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Annotated, Any
 
 import pandas as pd
 import typer
 
-from marktradar import data, registry
-from marktradar.config import Settings, load_settings
+from marktradar import data, monitoring, registry
+from marktradar.config import Settings, config_path_from, load_settings, update_data_source
 from marktradar.features import FEATURES, build_features, training_frame
 from marktradar.model import backtest, conformal_margin, fit, summarize_backtest
 from marktradar.service import ForecastService
@@ -72,13 +73,15 @@ def backtest_cmd(config: ConfigOpt = None) -> None:
     _echo_json(summarize_backtest(bt))
 
 
-@app.command()
-def train(
-    config: ConfigOpt = None,
-    force: Annotated[bool, typer.Option(help="Quality Gate ignorieren")] = False,
-) -> None:
-    """Backtest + finales Training + Quality Gate + Ablage in der Registry."""
-    cfg = _settings(config)
+@dataclass
+class TrainOutcome:
+    version: str
+    promoted: bool
+    summary: dict[str, float]
+    production_mae: float | None
+
+
+def _train(cfg: Settings, force: bool = False, source_url: str | None = None) -> TrainOutcome:
     frame = _load_training(cfg)
     result = backtest(frame, cfg.model, cfg.backtest.first_test_year)
     bt = result.tabelle
@@ -89,36 +92,137 @@ def train(
 
     raw_hash = data.sha256_of(cfg.data.raw_path) if cfg.data.raw_path.exists() else None
     metadata = {
-        "trainiert_auf_basisjahre": [
-            int(frame["jahr"].min()),
-            int(frame["jahr"].max()),
-        ],
+        "trainiert_auf_basisjahre": [int(frame["jahr"].min()), int(frame["jahr"].max())],
         "n_trainingszeilen": len(frame),
         "features": FEATURES,
         "backtest": summary,
         "conformal_margin": round(margin, 5),
         "backtest_pro_jahr": bt.round(4).to_dict(orient="records"),
         "daten_sha256": raw_hash,
-        "daten_quelle": cfg.data.source_url,
+        "daten_quelle": source_url or cfg.data.source_url,
         "konfiguration": cfg.model.model_dump(),
     }
     root = cfg.registry.path
     version_dir = registry.save(model, metadata, root)
-    _echo_json(summary)
 
     prod = registry.production_version(root)
     prod_mae = registry.load_metadata(root, prod)["backtest"]["mae_modell"] if prod else None
-    if force or registry.should_promote(
+    promoted = force or registry.should_promote(
         summary["mae_modell"], prod_mae, cfg.registry.promotion_tolerance
-    ):
+    )
+    if promoted:
         registry.promote(version_dir.name, root)
-        typer.echo(f"OK: Version {version_dir.name} ist jetzt produktiv.")
+    return TrainOutcome(version_dir.name, promoted, summary, prod_mae)
+
+
+def _report_outcome(outcome: TrainOutcome) -> None:
+    _echo_json(outcome.summary)
+    if outcome.promoted:
+        typer.echo(f"OK: Version {outcome.version} ist jetzt produktiv.")
     else:
         typer.echo(
-            f"ABGELEHNT: Version {version_dir.name} gespeichert, aber NICHT produktiv: "
-            f"MAE {summary['mae_modell']} vs. Produktion {prod_mae}."
+            f"ABGELEHNT: Version {outcome.version} gespeichert, aber NICHT produktiv: "
+            f"MAE {outcome.summary['mae_modell']} vs. Produktion {outcome.production_mae}."
         )
+
+
+@app.command()
+def train(
+    config: ConfigOpt = None,
+    force: Annotated[bool, typer.Option(help="Quality Gate ignorieren")] = False,
+) -> None:
+    """Backtest + finales Training + Quality Gate + Ablage in der Registry."""
+    outcome = _train(_settings(config), force)
+    _report_outcome(outcome)
+    if not outcome.promoted:
         raise typer.Exit(code=2)
+
+
+@app.command()
+def update(
+    config: ConfigOpt = None,
+    force: Annotated[bool, typer.Option(help="Auch ohne neue Daten neu trainieren")] = False,
+    report: Annotated[
+        Path | None, typer.Option(help="Zusammenfassung als Markdown hierhin schreiben")
+    ] = None,
+) -> None:
+    """Selbstständige Aktualisierung: neue BAG-Daten suchen -> Live-Güte des bisherigen
+    Modells messen -> neu trainieren -> Quality Gate -> config.yaml nachführen.
+
+    Exit-Code 0 = nichts Neues oder neues Modell produktiv, 2 = Kandidat abgelehnt.
+    """
+    cfg = _settings(config)
+    url = (cfg.data.discovery_page and data.discover_latest_url(cfg.data.discovery_page)) or (
+        cfg.data.source_url
+    )
+    digest = data.download(url, cfg.data.raw_path, cfg.data.sha256)
+    root = cfg.registry.path
+    has_production = registry.production_version(root) is not None
+    if digest == cfg.data.sha256 and has_production and not force:
+        typer.echo("Keine neuen Daten. Produktionsmodell bleibt unverändert.")
+        _write_report(report, None)
+        return
+
+    typer.echo(f"Neue Datenversion gefunden: {url}")
+    build(config)
+    live: list[dict[str, Any]] = []
+    if has_production:
+        model, metadata = registry.load_production(root)
+        live = monitoring.live_evaluation(model, metadata, _load_training(cfg))
+        monitoring.append(root, live)
+        for r in live:
+            typer.echo(
+                f"Live-Güte {metadata['version']} für {r['prognosejahr']}: "
+                f"MAE {r['mae_modell']} (Baseline {r['mae_konstant']})"
+            )
+
+    outcome = _train(cfg, force=False, source_url=url)
+    _report_outcome(outcome)
+    if outcome.promoted:
+        update_data_source(config_path_from(config), url, digest)
+        typer.echo("config.yaml nachgeführt (source_url, sha256).")
+    _write_report(report, (url, outcome, live))
+    if not outcome.promoted:
+        raise typer.Exit(code=2)
+
+
+def _write_report(
+    path: Path | None,
+    result: tuple[str, TrainOutcome, list[dict[str, Any]]] | None,
+) -> None:
+    if path is None:
+        return
+    if result is None:
+        path.write_text("Keine neuen BAG-Daten.\n", encoding="utf-8")
+        return
+    url, outcome, live = result
+    s = outcome.summary
+    lines = [
+        "## Neue BAG-Daten verarbeitet",
+        "",
+        f"Quelle: {url}",
+        "",
+        "| | Neues Modell | Produktion bisher |",
+        "|---|---|---|",
+        f"| MAE Backtest | {s['mae_modell']} | {outcome.production_mae} |",
+        f"| Verbesserung vs. konstant | {s['verbesserung_vs_konstant']:.0%} | |",
+        f"| Rangkorrelation | {s['rangkorrelation']} | |",
+        f"| Intervallabdeckung | {s['intervall_abdeckung']:.0%} | |",
+        "",
+        f"**Quality Gate:** {'bestanden' if outcome.promoted else 'NICHT bestanden'}",
+    ]
+    if live:
+        lines += ["", "### Live-Güte des bisherigen Modells (nie gesehene Jahre)", ""]
+        lines += [
+            "| Prognosejahr | MAE Modell | MAE konstant | Rangkorrelation |",
+            "|---|---|---|---|",
+        ]
+        lines += [
+            f"| {r['prognosejahr']} | {r['mae_modell']} | {r['mae_konstant']} | "
+            f"{r['rangkorrelation']} |"
+            for r in live
+        ]
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
 @app.command()

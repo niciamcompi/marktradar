@@ -3,7 +3,9 @@
 
 data:
   # BAG "Aufsichtsdaten OKP" – erscheint jährlich neu (Statistik der obligatorischen KV, T 5.01).
-  # Wenn das BAG eine neue Ausgabe publiziert: URL ersetzen, sha256 leeren, `marktradar download` laufen lassen.
+  # `marktradar update` findet neue Ausgaben selbst und trägt URL + sha256 hier ein.
+  # Seite, auf der `marktradar update` automatisch nach der neusten Ausgabe sucht:
+  discovery_page: "https://www.bag.admin.ch/de/aufsichtsdaten-krankenversicherer"
   source_url: "https://www.bag.admin.ch/dam/de/sd-web/RRUZlsq0gPk7/aufsichtsdaten-okp-1996-2024.xlsx"
   sha256: "9f4f58cc9a9567fc16da3b299f5d86b73fcbeab1f3f831a8fdc8c548f7f1c214"
   raw_path: "data/raw/aufsichtsdaten_okp.xlsx"

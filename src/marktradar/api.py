@@ -1,6 +1,6 @@
 """REST-API (FastAPI).
 
-Start lokal:  uv run marktradar serve
+Start lokal:  uv run marktradar serve   -> Oberfläche: http://localhost:8000/
 Doku:         http://localhost:8000/docs  (interaktiv, automatisch aus den Typen erzeugt)
 """
 
@@ -8,17 +8,21 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import Any
 
 import pandas as pd
 from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from marktradar import __version__
+from marktradar import __version__, monitoring
 from marktradar.config import Settings, load_settings
 from marktradar.registry import load_production
 from marktradar.service import ForecastService, UnknownInsurerError
 
+WEB_DIR = Path(__file__).parent / "web"
 PP_LIMIT = 15.0  # Szenarien ausserhalb ±15 %-Punkte liegen weit ausserhalb der Trainingsdaten
 
 
@@ -50,6 +54,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             model, panel, min_versicherte=cfg.features.min_versicherte
         )
         app.state.metadata = metadata
+        app.state.registry_path = cfg.registry.path
         yield
 
     app = FastAPI(
@@ -64,6 +69,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         svc: ForecastService = request.app.state.service
         return svc
 
+    @app.get("/", include_in_schema=False)
+    def index() -> FileResponse:
+        return FileResponse(WEB_DIR / "index.html")
+
+    app.mount("/static", StaticFiles(directory=WEB_DIR), name="static")
+
     @app.get("/health")
     def health(request: Request) -> dict[str, Any]:
         return {"status": "ok", "modell_version": request.app.state.metadata["version"]}
@@ -71,7 +82,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.get("/modell")
     def modell(request: Request) -> dict[str, Any]:
         """Version, Trainingsdaten und Backtest-Metriken des Produktionsmodells."""
-        meta: dict[str, Any] = request.app.state.metadata
+        meta: dict[str, Any] = dict(request.app.state.metadata)
+        meta["live_monitoring"] = monitoring.load(request.app.state.registry_path)
         return meta
 
     @app.get("/versicherer")

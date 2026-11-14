@@ -29,6 +29,20 @@ Beispiel (CSS, Basisjahr 2024): Prämie +1 %-Punkt über Markt → Marktanteil
 
 → **30 % genauer** als die naive Prognose. Details und Grenzen: [MODEL_CARD.md](MODEL_CARD.md).
 
+## Oberfläche
+
+Nach `serve` unter **http://localhost:8000**:
+
+1. **Markt**: alle grösseren Versicherer mit Prognose und 80-%-Intervall.
+   Klick auf einen Namen öffnet das Szenario.
+2. **Szenario**: Versicherer wählen, Prämienanpassung relativ zum Markt mit dem
+   Regler einstellen. Kurve zeigt die Bestandesveränderung in Personen.
+3. **Modellgüte**: Backtest-Fehler je Jahr gegen die Annahme „Marktanteil bleibt
+   gleich“, Rangkorrelation, Intervall-Treffer, Live-Prüfung und Steckbrief.
+
+Alle Diagramme haben Tooltips und eine Tabellenansicht; hell/dunkel folgt dem System.
+Keine externen Abhängigkeiten (kein CDN), läuft also auch offline und im Firmennetz.
+
 ## Schnellstart
 
 Voraussetzung: [uv](https://docs.astral.sh/uv/).
@@ -39,7 +53,7 @@ cd marktradar
 uv sync
 make pipeline        # download -> build -> train (ca. 1-2 Min.)
 uv run marktradar predict 8 --kurve
-make serve           # http://localhost:8000/docs
+make serve           # Oberfläche: http://localhost:8000
 ```
 
 **Windows (PowerShell)**: `make` gibt es dort nicht, stattdessen `tasks.ps1`:
@@ -50,6 +64,8 @@ cd marktradar
 powershell -ExecutionPolicy Bypass -File .\tasks.ps1 pipeline
 powershell -ExecutionPolicy Bypass -File .\tasks.ps1 serve
 ```
+
+Dann im Browser **http://localhost:8000** öffnen (Oberfläche) bzw. `/docs` (API).
 
 Oder alles im Container (trainiert beim Build):
 
@@ -119,16 +135,41 @@ BAG-Nummern der grössten Versicherer: 8 CSS, 1562 Helsana, 1384 SWICA, 1542 Ass
 9. **CI/CD**: `.github/workflows/marktradar.yml`: Lint, Typen, Tests bei jedem Push;
    monatliches Retraining auf echten Daten + Container-Smoke-Test.
 
-## Wartung
+## Selbstständige Aktualisierung
 
-**Jährliches Update** (das BAG publiziert die neuen Aufsichtsdaten jeweils im Herbst):
+Das BAG publiziert die Aufsichtsdaten einmal pro Jahr neu. `marktradar update`
+macht daraus einen geschlossenen Kreislauf:
 
-1. Neue URL von der [BAG-Seite](https://www.bag.admin.ch/de/aufsichtsdaten-krankenversicherer)
-   in `config/config.yaml` eintragen, `sha256` leeren.
-2. `make pipeline`: Neue Version wird nur produktiv, wenn sie das Quality Gate besteht.
-3. Bei Problemen: `uv run marktradar promote <alte-version>` (Rollback).
+```
+neue Datei auf BAG-Seite gefunden?
+   └─ nein → nichts tun
+   └─ ja   → herunterladen, prüfen
+             → bisheriges Modell an den neuen, nie gesehenen Jahren messen (Live-Güte)
+             → neu trainieren (Backtest + Conformal-Kalibrierung)
+             → Quality Gate: nur produktiv, wenn nicht schlechter als bisher
+             → config.yaml (URL + Prüfsumme) nachführen
+```
 
-Qualität sichern: `make lint test`.
+Die Live-Güte erscheint in der Oberfläche unter *Modellgüte → Live-Prüfung*. Sie ist
+der ehrlichste Test überhaupt: echte Prognosen für Jahre, die das Modell nie gesehen hat.
+
+**Automatisch über GitHub:** `.github/workflows/daten-update.yml` läuft jeden Montag.
+Findet er neue Daten und besteht das neue Modell das Quality Gate, eröffnet er einen
+Pull Request mit Bericht (Metriken alt/neu, Live-Güte). Du entscheidest per Merge.
+Einmalig nötig: *Settings → Actions → General → „Allow GitHub Actions to create and
+approve pull requests“*.
+
+**Automatisch auf Windows:** Aufgabenplanung, z.B. wöchentlich:
+
+```powershell
+schtasks /Create /SC WEEKLY /D MON /ST 08:00 /TN "Marktradar Update" /TR "powershell -ExecutionPolicy Bypass -File $HOME\marktradar\tasks.ps1 update"
+```
+
+**Rollback:** `uv run marktradar promote <alte-version>` (Versionen liegen in `models/`).
+
+Wichtig zur Einordnung: „Selbst verbessern“ heisst hier *mit jedem neuen Datenjahr neu
+lernen und das nur übernehmen, wenn es nachweislich nicht schlechter wird*. Das Modell
+verändert nicht unbemerkt sein eigenes Verhalten; jede Version ist nachvollziehbar.
 
 ## Ideen zum Weiterbauen
 

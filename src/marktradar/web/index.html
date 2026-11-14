@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="de-CH">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Marktradar</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <header class="masthead">
+    <div class="wrap">
+      <p class="kicker">Marktradar · Obligatorische Krankenpflegeversicherung</p>
+      <h1 id="headline">Wer im Grundversicherungsmarkt Versicherte gewinnt, und wer verliert.</h1>
+      <p class="dek" id="dek">Prognose auf Basis der öffentlichen Aufsichtsdaten des BAG.</p>
+    </div>
+    <nav class="sections" aria-label="Abschnitte">
+      <div class="wrap">
+        <a href="#markt"><span>01</span> Markt</a>
+        <a href="#szenario"><span>02</span> Szenario</a>
+        <a href="#guete"><span>03</span> Modellgüte</a>
+        <a href="/docs" class="aside">API</a>
+      </div>
+    </nav>
+  </header>
+
+  <main class="wrap">
+    <section id="markt">
+      <div class="section-head">
+        <h2><span class="num">01</span> Markt</h2>
+        <p class="lede" id="markt-lede">Erwartete Veränderung des Marktanteils im Folgejahr, wenn alle Versicherer ihre Prämien im Gleichschritt mit dem Markt anpassen.</p>
+      </div>
+      <div class="toolbar">
+        <div class="segmented" role="group" aria-label="Versicherer filtern">
+          <button type="button" data-filter="gross" aria-pressed="true">≥ 100'000 Versicherte</button>
+          <button type="button" data-filter="alle" aria-pressed="false">Alle</button>
+        </div>
+        <div class="legend" aria-hidden="true">
+          <span><i class="dot gain"></i>gewinnt Anteil</span>
+          <span><i class="dot loss"></i>verliert Anteil</span>
+          <span><i class="range"></i>80-%-Intervall</span>
+        </div>
+        <button type="button" class="link" data-toggle-table="markt">Als Tabelle</button>
+      </div>
+      <div id="markt-chart" class="dotplot"></div>
+      <div id="markt-table" class="table-view" hidden></div>
+      <p class="note">Klick auf einen Namen öffnet das Szenario für diesen Versicherer.</p>
+    </section>
+
+    <section id="szenario">
+      <div class="section-head">
+        <h2><span class="num">02</span> Szenario</h2>
+        <p class="lede">Was passiert mit dem Bestand, wenn ein Versicherer seine Prämie stärker oder schwächer anpasst als der Markt?</p>
+      </div>
+      <div class="controls">
+        <label class="field">
+          <span>Versicherer</span>
+          <select id="insurer"></select>
+        </label>
+        <label class="field grow">
+          <span>Prämienanpassung relativ zum Markt: <output id="pp-out">0.0</output> %-Punkte</span>
+          <input id="pp" type="range" min="-5" max="5" step="0.5" value="0">
+          <span class="scale"><span>−5</span><span>gleich wie Markt</span><span>+5</span></span>
+        </label>
+      </div>
+      <div class="figures" id="figures"></div>
+      <figure>
+        <figcaption>Veränderung des Bestands (Personen) je nach Prämienanpassung · Fläche = 80-%-Intervall</figcaption>
+        <div id="curve" class="chart"></div>
+      </figure>
+    </section>
+
+    <section id="guete">
+      <div class="section-head">
+        <h2><span class="num">03</span> Modellgüte</h2>
+        <p class="lede">Für jedes Jahr ab 2014 wurde das Modell nur mit den Jahren davor trainiert und dann an der Realität gemessen, so als hätte man es damals eingesetzt.</p>
+      </div>
+      <div class="figures" id="quality-figures"></div>
+      <figure>
+        <figcaption>Durchschnittlicher Prognosefehler je Prognosejahr, in % des Marktanteils (tiefer ist besser)</figcaption>
+        <div class="legend standalone" aria-hidden="true">
+          <span><i class="line s1"></i>Modell</span>
+          <span><i class="line s2"></i>Annahme „Marktanteil bleibt gleich“</span>
+        </div>
+        <div id="error-chart" class="chart"></div>
+        <button type="button" class="link" data-toggle-table="guete">Als Tabelle</button>
+        <div id="guete-table" class="table-view" hidden></div>
+      </figure>
+
+      <div class="two-col">
+        <div>
+          <h3>Live-Prüfung</h3>
+          <div id="live"></div>
+        </div>
+        <div>
+          <h3>Steckbrief</h3>
+          <dl id="facts" class="facts"></dl>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="wrap colophon">
+    <p>Datenquelle: Bundesamt für Gesundheit, Statistik der obligatorischen Krankenversicherung, Aufsichtsdaten OKP. Prognosen sind Richtgrössen und keine kausalen Aussagen; Details in der Model Card.</p>
+  </footer>
+  <div id="tooltip" class="tooltip" role="status" hidden></div>
+  <script src="/static/app.js" defer></script>
+</body>
+</html>
