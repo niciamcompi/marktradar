@@ -1,6 +1,6 @@
-# Windows-Ersatz für das Makefile (PowerShell).
-# Aufruf aus dem Ordner marktradar:   .\tasks.ps1 pipeline
-# Falls Skripte blockiert sind:        powershell -ExecutionPolicy Bypass -File .\tasks.ps1 pipeline
+# Windows replacement for the Makefile (PowerShell).
+# Run from the marktradar folder:   .\tasks.ps1 pipeline
+# If scripts are blocked:             powershell -ExecutionPolicy Bypass -File .\tasks.ps1 pipeline
 param(
     [Parameter(Position = 0)]
     [ValidateSet("install", "lint", "test", "pipeline", "update", "serve", "docker")]
@@ -12,7 +12,7 @@ Set-Location $PSScriptRoot
 function Run([string]$cmd) {
     Write-Host ">> $cmd" -ForegroundColor Cyan
     Invoke-Expression $cmd
-    if ($LASTEXITCODE -ne 0) { throw "Fehlgeschlagen: $cmd" }
+    if ($LASTEXITCODE -ne 0) { throw "Failed: $cmd" }
 }
 
 switch ($Task) {

@@ -27,9 +27,13 @@
     <section id="markt">
       <div class="section-head">
         <h2><span class="num">01</span> Markt</h2>
-        <p class="lede" id="markt-lede">Erwartete Veränderung des Marktanteils im Folgejahr, wenn alle Versicherer ihre Prämien im Gleichschritt mit dem Markt anpassen.</p>
+        <p class="lede" id="markt-lede">Erwartete Veränderung des Marktanteils, auf Basis der vom BAG genehmigten Prämien.</p>
       </div>
       <div class="toolbar">
+        <div class="segmented" role="group" aria-label="Prognosejahr" id="horizon-switch"></div>
+        <label class="inline-field"><span class="visually-hidden">Kanton</span>
+          <select id="kanton"><option value="">Ganze Schweiz</option></select>
+        </label>
         <div class="segmented" role="group" aria-label="Versicherer filtern">
           <button type="button" data-filter="gross" aria-pressed="true">≥ 100'000 Versicherte</button>
           <button type="button" data-filter="alle" aria-pressed="false">Alle</button>
@@ -57,7 +61,8 @@
           <select id="insurer"></select>
         </label>
         <label class="field grow">
-          <span>Prämienanpassung relativ zum Markt: <output id="pp-out">0.0</output> %-Punkte</span>
+          <span><span id="pp-label">Prämienanpassung relativ zum Markt</span>: <output id="pp-out">0.0</output>
+            <button type="button" class="link" id="pp-reset" hidden>zurück zum genehmigten Tarif</button></span>
           <input id="pp" type="range" min="-5" max="5" step="0.5" value="0">
           <span class="scale"><span>−5</span><span>gleich wie Markt</span><span>+5</span></span>
         </label>
@@ -67,16 +72,21 @@
         <figcaption>Veränderung des Bestands (Personen) je nach Prämienanpassung · Fläche = 80-%-Intervall</figcaption>
         <div id="curve" class="chart"></div>
       </figure>
+      <figure>
+        <figcaption id="kantone-caption">Nach Kanton</figcaption>
+        <div id="kantone-chart" class="dotplot"></div>
+      </figure>
     </section>
 
     <section id="guete">
       <div class="section-head">
         <h2><span class="num">03</span> Modellgüte</h2>
-        <p class="lede">Für jedes Jahr ab 2014 wurde das Modell nur mit den Jahren davor trainiert und dann an der Realität gemessen, so als hätte man es damals eingesetzt.</p>
+        <p class="lede">Für jedes vergangene Jahr wurde das Modell nur mit den Daten trainiert, die damals schon bekannt waren, und dann an der Realität gemessen, so als hätte man es damals eingesetzt.</p>
       </div>
+      <div class="toolbar"><div class="segmented" role="group" aria-label="Prognosehorizont" id="quality-horizon"></div></div>
       <div class="figures" id="quality-figures"></div>
       <figure>
-        <figcaption>Durchschnittlicher Prognosefehler je Prognosejahr, in % des Marktanteils (tiefer ist besser)</figcaption>
+        <figcaption>Durchschnittlicher Fehler der nationalen Prognose je Jahr, in % des Marktanteils (tiefer ist besser)</figcaption>
         <div class="legend standalone" aria-hidden="true">
           <span><i class="line s1"></i>Modell</span>
           <span><i class="line s2"></i>Annahme „Marktanteil bleibt gleich“</span>
@@ -100,7 +110,7 @@
   </main>
 
   <footer class="wrap colophon">
-    <p>Datenquelle: Bundesamt für Gesundheit, Statistik der obligatorischen Krankenversicherung, Aufsichtsdaten OKP. Prognosen sind Richtgrössen und keine kausalen Aussagen; Details in der Model Card.</p>
+    <p>Datenquelle: Bundesamt für Gesundheit, Prämien-Open-Data (genehmigte Prämien und Versichertenbestand je Kanton) über opendata.swiss. Referenzprämie: Erwachsene, Standardmodell, Franchise 300, mit Unfall. Prognosen sind Richtgrössen und keine kausalen Aussagen; Details in der Model Card.</p>
   </footer>
   <div id="tooltip" class="tooltip" role="status" hidden></div>
   <script src="/static/app.js" defer></script>

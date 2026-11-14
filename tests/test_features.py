@@ -1,64 +1,66 @@
-from pathlib import Path
-
 import numpy as np
 import pandas as pd
 import pytest
 
-from marktradar.data import parse_workbook
 from marktradar.features import (
-    FEATURES,
-    LEVER,
-    TARGET,
     build_features,
+    features_for,
+    lever,
     lever_to_pp,
+    market_premiums,
     pp_to_lever,
+    target,
     training_frame,
 )
 
+from .conftest import INSURED, LAST_PREMIUM_YEAR, PREMIUMS
 
-@pytest.fixture
-def feats(workbook: Path) -> pd.DataFrame:
-    return build_features(parse_workbook(workbook))
-
-
-def test_all_features_present(feats: pd.DataFrame) -> None:
-    assert set(FEATURES) <= set(feats.columns)
+BESTAND = INSURED[INSURED["jahr"] <= LAST_PREMIUM_YEAR - 2]
+PRAEMIEN = PREMIUMS[PREMIUMS["jahr"] >= 2011]
 
 
-def test_target_is_next_year_share_change(feats: pd.DataFrame) -> None:
-    """Schutz gegen Data Leakage / Off-by-one: Ziel(t) = log-Anteil(t+1) - log-Anteil(t)."""
-    one = feats[feats["bag_nr"] == feats["bag_nr"].iloc[0]].set_index("jahr")
-    expected = one.loc[2008, "log_marktanteil"] - one.loc[2007, "log_marktanteil"]
-    assert one.loc[2007, TARGET] == pytest.approx(expected)
-    # Vorjahreswachstum in t+1 entspricht genau dem Ziel von t
-    assert one.loc[2008, "anteilswachstum_vorjahr"] == pytest.approx(one.loc[2007, TARGET])
+@pytest.fixture(scope="module")
+def feats() -> pd.DataFrame:
+    return build_features(PRAEMIEN, BESTAND, [1, 2])
 
 
-def test_last_year_has_no_target_and_no_lever(feats: pd.DataFrame) -> None:
+def _row(feats: pd.DataFrame, bag_nr: int, kanton: str, jahr: int) -> pd.Series:
+    return feats.set_index(["bag_nr", "kanton", "jahr"]).loc[(bag_nr, kanton, jahr)]
+
+
+def test_target_is_future_share_change(feats: pd.DataFrame) -> None:
+    """Guards against leakage and off-by-one errors."""
+    now, later = _row(feats, 8, "ZH", 2014), _row(feats, 8, "ZH", 2016)
+    assert now[target(2)] == pytest.approx(later["log_anteil"] - now["log_anteil"])
+    assert _row(feats, 8, "ZH", 2015)["anteilswachstum_vorjahr"] == pytest.approx(
+        _row(feats, 8, "ZH", 2014)[target(1)]
+    )
+
+
+def test_levers_use_published_premiums_only(feats: pd.DataFrame) -> None:
     last = feats[feats["jahr"] == feats["jahr"].max()]
-    assert last[TARGET].isna().all()
-    assert last[LEVER].isna().all()
+    assert last[target(1)].isna().all()
+    # premiums are two years ahead of insured data -> both levers known for the last base year
+    assert last[lever(1)].notna().all() and last[lever(2)].notna().all()
 
 
-def test_market_relative_premium_is_centered(feats: pd.DataFrame) -> None:
-    for _, g in feats.groupby("jahr"):
-        ratio = np.exp(g["rel_praemie"])
-        assert np.average(ratio, weights=g["versicherte"]) == pytest.approx(1.0)
+def test_relative_premium_is_centred_per_canton(feats: pd.DataFrame) -> None:
+    for _, g in feats[feats["rel_praemie"].notna()].groupby(["kanton", "jahr"]):
+        assert np.average(g["rel_praemie"], weights=g["versicherte"]) == pytest.approx(0, abs=1e-9)
 
 
-def test_gap_years_break_the_chain(workbook: Path) -> None:
-    panel = parse_workbook(workbook)
-    nr = panel["bag_nr"].iloc[0]
-    panel = panel[~((panel["bag_nr"] == nr) & (panel["jahr"] == 2010))]
-    f = build_features(panel).set_index(["bag_nr", "jahr"])
-    assert np.isnan(f.loc[(nr, 2009), TARGET])
-    assert np.isnan(f.loc[(nr, 2011), "anteilswachstum_vorjahr"])
+def test_market_premium_for_years_without_insured_data() -> None:
+    m = market_premiums(PRAEMIEN, BESTAND)
+    assert m["jahr"].max() == LAST_PREMIUM_YEAR and m["markt_praemie"].notna().all()
 
 
 def test_training_frame_filters(feats: pd.DataFrame) -> None:
-    tf = training_frame(feats, min_versicherte=0, max_abs_target=0.01)
-    assert tf[TARGET].abs().le(0.01).all()
-    assert tf[TARGET].notna().all()
+    tf = training_frame(feats, 2, min_versicherte=0, max_abs_target_per_year=0.01)
+    assert tf[target(2)].abs().le(0.02).all() and tf[lever(2)].notna().all()
+
+
+def test_features_per_horizon() -> None:
+    assert lever(2) in features_for(2) and lever(2) not in features_for(1)
 
 
 @pytest.mark.parametrize("pp", [-5.0, 0.0, 2.5])

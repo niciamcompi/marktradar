@@ -1,182 +1,183 @@
-# Marktradar Krankenversicherung
+# Marktradar
 
-**Wie stark verändert sich der Marktanteil eines Krankenversicherers im nächsten Jahr,
-und wie hängt das von seiner Prämienanpassung im Vergleich zur Konkurrenz ab?**
+Every autumn, after the new premiums are announced, a large number of people in Switzerland
+switch their basic health insurer, and the premium compared with the competition is the
+main driver. Marktradar turns that into a forecast. For every insurer and every canton it estimates how
+the market share will change next year, and lets you ask "what if": what happens to
+our portfolio if we price 2 percentage points above the market?
 
-Marktradar beantwortet diese Frage mit einem ML-Modell, das ausschliesslich auf
-**öffentlichen Daten des BAG** trainiert ist (Aufsichtsdaten OKP, alle Versicherer,
-2006–2024). Keine Kunden- oder Zahlungsdaten nötig.
+It runs entirely on **public data from the Federal Office of Public Health (BAG)**:
+the approved premiums of all insurers (2011–2027) and the number of insured persons per
+insurer and canton (2009–2025). No customer or claims data is needed.
 
-## Wofür im Vertrieb?
+![Overview](docs/overview.png)
 
-| Frage | Endpoint / Befehl |
-|---|---|
-| Wer gewinnt, wer verliert im Markt? | `GET /markt` |
-| Was bedeutet es für unseren Bestand, wenn wir 2 %-Punkte über dem Markt aufschlagen? | `POST /prognose` |
-| Wie preissensitiv ist der Bestand eines Versicherers? (Elastizitätskurve) | `POST /elastizitaet` |
-| Wo stehen Konkurrenten bei Prämie, Reserven, Kosten? | `GET /versicherer` |
+## What you can do with it
 
-Beispiel (CSS, Basisjahr 2024): Prämie +1 %-Punkt über Markt → Marktanteil
-**−0.75 %** (80 %-Intervall −2.2 % bis +0.3 %), rund **11'500 Versicherte** weniger.
+- **See the market.** Who is likely to gain or lose share in 2027, nationally or in a
+  single canton, based on the premiums the BAG has just approved.
+- **Play through scenarios.** Pick an insurer, move the premium slider, and watch the
+  expected change in insured persons, for Switzerland and for each canton.
+- **Check how much to trust it.** Every number comes with an 80 % range, and a whole
+  page shows how the model would have performed in past years.
 
-## Ergebnisse (Backtest 2014–2023, ausserhalb der Trainingszeit)
+A concrete example: CSS raised its 2027 premiums on average 2.9 percentage points more
+than its canton markets. The model expects its national market share to fall by about
+7 % by 2027 (80 % range: −20 % to +10 %), roughly 100,000 insured persons.
 
-| Metrik | Modell | Baseline „Anteil bleibt gleich“ | Baseline „wie Vorjahr“ |
-|---|---|---|---|
-| MAE Marktanteilswachstum (log) | **0.047** | 0.067 | 0.090 |
-| Rangkorrelation (Gewinner/Verlierer) | **0.76** | – | – |
-| Abdeckung 80 %-Intervall | 0.75 (roh 0.62) | – | – |
+## Getting started
 
-→ **30 % genauer** als die naive Prognose. Details und Grenzen: [MODEL_CARD.md](MODEL_CARD.md).
+You need [uv](https://docs.astral.sh/uv/) and Git.
 
-## Oberfläche
-
-Nach `serve` unter **http://localhost:8000**:
-
-1. **Markt**: alle grösseren Versicherer mit Prognose und 80-%-Intervall.
-   Klick auf einen Namen öffnet das Szenario.
-2. **Szenario**: Versicherer wählen, Prämienanpassung relativ zum Markt mit dem
-   Regler einstellen. Kurve zeigt die Bestandesveränderung in Personen.
-3. **Modellgüte**: Backtest-Fehler je Jahr gegen die Annahme „Marktanteil bleibt
-   gleich“, Rangkorrelation, Intervall-Treffer, Live-Prüfung und Steckbrief.
-
-Alle Diagramme haben Tooltips und eine Tabellenansicht; hell/dunkel folgt dem System.
-Keine externen Abhängigkeiten (kein CDN), läuft also auch offline und im Firmennetz.
-
-## Schnellstart
-
-Voraussetzung: [uv](https://docs.astral.sh/uv/).
+On macOS or Linux:
 
 ```bash
 git clone https://github.com/niciamcompi/marktradar.git
 cd marktradar
-uv sync
-make pipeline        # download -> build -> train (ca. 1-2 Min.)
-uv run marktradar predict 8 --kurve
-make serve           # Oberfläche: http://localhost:8000
+make pipeline   # download BAG data, build, train (a few minutes the first time)
+make serve      # then open http://localhost:8000
 ```
 
-**Windows (PowerShell)**: `make` gibt es dort nicht, stattdessen `tasks.ps1`:
+On Windows (PowerShell), run these one at a time:
 
 ```powershell
+cd $HOME
 git clone https://github.com/niciamcompi/marktradar.git
 cd marktradar
 powershell -ExecutionPolicy Bypass -File .\tasks.ps1 pipeline
 powershell -ExecutionPolicy Bypass -File .\tasks.ps1 serve
 ```
 
-Dann im Browser **http://localhost:8000** öffnen (Oberfläche) bzw. `/docs` (API).
+Then open **http://localhost:8000** for the web interface, or **/docs** for the API.
 
-Oder alles im Container (trainiert beim Build):
+The first download is about 500 MB, because it fetches every yearly archive since 2011.
+After that only the current files are refreshed.
+
+If you prefer Docker, the image downloads the data and trains the model while it builds:
 
 ```bash
 docker build -t marktradar .
 docker run --rm -p 8000:8000 marktradar
 ```
 
-API-Beispiel:
+## How it works
 
-```bash
-curl -X POST localhost:8000/prognose -H 'Content-Type: application/json' \
-     -d '{"bag_nr": 8, "praemienanpassung_rel_pp": 1}'
-```
+The idea is simple. People compare premiums within their canton, so the model looks at
+each insurer *relative to its canton market*:
 
-BAG-Nummern der grössten Versicherer: 8 CSS, 1562 Helsana, 1384 SWICA, 1542 Assura,
-290 Concordia, 1509 Sanitas, 376 KPT, 1555 Visana (`GET /versicherer` für alle).
+- the premium level compared with the canton average,
+- the premium change the BAG approved for next year, compared with the market,
+- how strongly the whole canton market's premiums rise (big increases make more people
+  look around),
+- the insurer's recent share trend and its size in the canton.
 
-## Architektur
+It learns from 15 years of history how canton market shares reacted to these signals,
+using gradient boosting (scikit-learn). Canton forecasts are then added up to a national
+figure.
 
-```
- BAG Excel ──download──> data/raw ──build──> data/processed/panel.parquet
- (sha256 geprüft)               (parsen + validieren)        │
-                                                             ▼
-                          features.py: marktrelative Kennzahlen, Ziel = Δ log-Marktanteil
-                                                             │
-                                                             ▼
-          model.py: Rolling-Backtest ──> Conformal-Kalibrierung ──> finales Modell
-                                                             │
-                                                             ▼
-          registry.py: models/<version>/ + Quality Gate ──> production.json
-                                                             │
-                              ┌──────────────────────────────┴───────────┐
-                              ▼                                          ▼
-                   service.py (Fachlogik)  <───────────────  cli.py / api.py (FastAPI)
-```
+The timing matters. The BAG publishes approved premiums at the end of September, before
+the switching deadline on 30 November, while insured numbers come two years later. With
+data up to 2025 and premiums up to 2027, the model forecasts 2026 and 2027 using only
+information that is actually available today.
 
-| Datei | Verantwortung |
-|---|---|
-| `config/config.yaml` | Alle Einstellungen (Datenquelle, Filter, Hyperparameter, Gate) |
-| `src/marktradar/data.py` | Download mit Prüfsumme, robuster Parser (über BAG-Spaltencodes), Validierung |
-| `src/marktradar/features.py` | Feature Engineering, Zeitlogik gegen Data Leakage |
-| `src/marktradar/model.py` | Gradient Boosting + Quantile + Conformal, zeitlicher Backtest |
-| `src/marktradar/registry.py` | Versionierte Modelle, Quality Gate, Rollback |
-| `src/marktradar/service.py` | Prognosen/Szenarien (von API und CLI genutzt) |
-| `src/marktradar/api.py`, `cli.py` | Schnittstellen |
-| `tests/` | 35 Tests auf synthetischen Daten mit bekanntem Effekt |
+As reference premium it uses what every insurer must offer: adults, standard model,
+CHF 300 deductible, accident cover included.
 
-## Was du hier an ML- und Deployment-Praxis lernen kannst
+## How good is it?
 
-1. **Zeitreihen-Validierung**: Rolling-Origin-Backtest statt zufälligem Split
-   (`model.backtest`). Ein Test prüft, dass nie mit Testjahr-Daten trainiert wird.
-2. **Data Leakage vermeiden**: Jede Feature-Spalte ist dokumentiert mit „wann ist
-   das bekannt?“ (`features.py`).
-3. **Ehrliche Baselines**: Ein Modell ist nur so gut wie sein Abstand zur einfachsten
-   Alternative.
-4. **Domänenwissen als Constraint**: Monotone Constraints (höhere Prämie → nie mehr
-   Wachstum) machen das Modell robust und erklärbar.
-5. **Unsicherheit quantifizieren**: Quantilregression + *Conformal Prediction* (CQR).
-   Die rohen Intervalle waren zu optimistisch (62 % statt 80 %), nach Kalibrierung 75 %.
-6. **Robuste Datenpipelines**: Parser orientiert sich an stabilen Codes statt an
-   Spaltenpositionen; Validierung bricht bei unplausiblen Daten ab.
-7. **MLOps**: Modell-Registry, Quality Gate vor dem Produktivsetzen, Metadaten
-   (Daten-Hash, Git-Commit, Metriken) zu jeder Version, Rollback per `marktradar promote`.
-8. **Deployment**: Multi-Stage-Docker (Training im Build → reproduzierbares Image),
-   non-root, Healthcheck, Firmen-Registry/-Proxy unterstützt.
-9. **CI/CD**: `.github/workflows/marktradar.yml`: Lint, Typen, Tests bei jedem Push;
-   monatliches Retraining auf echten Daten + Container-Smoke-Test.
+Open the **Modellgüte** section in the web interface. For each past year, the model was
+trained only on data available at that time and then compared with what really happened.
 
-## Selbstständige Aktualisierung
+| | 1 year ahead | 2 years ahead |
+|---|---|---|
+| Error compared with "market share stays the same" | 20 % smaller | 16 % smaller |
+| Rank correlation (does it order winners and losers right?) | 0.61 | 0.54 |
+| Share of actual values inside the 80 % range | 76 % | 72 % |
 
-Das BAG publiziert die Aufsichtsdaten einmal pro Jahr neu. `marktradar update`
-macht daraus einen geschlossenen Kreislauf:
+That is useful, but not magic. Switching depends on a lot that is not in public data
+(service, advertising, broker channels), and the years after the big premium increases
+of 2023 and 2024 were clearly harder to predict. The [model card](MODEL_CARD.md) lists
+all known limitations.
 
-```
-neue Datei auf BAG-Seite gefunden?
-   └─ nein → nichts tun
-   └─ ja   → herunterladen, prüfen
-             → bisheriges Modell an den neuen, nie gesehenen Jahren messen (Live-Güte)
-             → neu trainieren (Backtest + Conformal-Kalibrierung)
-             → Quality Gate: nur produktiv, wenn nicht schlechter als bisher
-             → config.yaml (URL + Prüfsumme) nachführen
-```
+## It updates itself
 
-Die Live-Güte erscheint in der Oberfläche unter *Modellgüte → Live-Prüfung*. Sie ist
-der ehrlichste Test überhaupt: echte Prognosen für Jahre, die das Modell nie gesehen hat.
+New BAG data appears once a year. `marktradar update` (or `tasks.ps1 update`) handles it:
 
-**Automatisch über GitHub:** `.github/workflows/daten-update.yml` läuft jeden Montag.
-Findet er neue Daten und besteht das neue Modell das Quality Gate, eröffnet er einen
-Pull Request mit Bericht (Metriken alt/neu, Live-Güte). Du entscheidest per Merge.
-Einmalig nötig: *Settings → Actions → General → „Allow GitHub Actions to create and
-approve pull requests“*.
+1. It checks the BAG catalogue. If nothing changed, it stops.
+2. If there is new data, it first measures the current model on the years it has never
+   seen. That is the most honest test there is, and the results appear in the web
+   interface under *Live-Prüfung*.
+3. It retrains, and only puts the new model into production if it is not worse than
+   the old one.
+4. It records the exact file versions in `config/data_manifest.json`.
 
-**Automatisch auf Windows:** Aufgabenplanung, z.B. wöchentlich:
+On GitHub, the workflow `.github/workflows/daten-update.yml` runs this every Monday and
+opens a pull request with a short report when there is something new. You review it and
+merge. For that to work, enable *Settings → Actions → General → Allow GitHub Actions to
+create and approve pull requests* once.
+
+On Windows you can schedule it with the Task Scheduler:
 
 ```powershell
 schtasks /Create /SC WEEKLY /D MON /ST 08:00 /TN "Marktradar Update" /TR "powershell -ExecutionPolicy Bypass -File $HOME\marktradar\tasks.ps1 update"
 ```
 
-**Rollback:** `uv run marktradar promote <alte-version>` (Versionen liegen in `models/`).
+If a new model ever turns out worse in practice, go back with
+`uv run marktradar promote <version>`. All versions stay in `models/`.
 
-Wichtig zur Einordnung: „Selbst verbessern“ heisst hier *mit jedem neuen Datenjahr neu
-lernen und das nur übernehmen, wenn es nachweislich nicht schlechter wird*. Das Modell
-verändert nicht unbemerkt sein eigenes Verhalten; jede Version ist nachvollziehbar.
+## Project layout
 
-## Ideen zum Weiterbauen
+| Path | What it does |
+|---|---|
+| `config/config.yaml` | All settings: data sources, filters, model parameters, quality gate |
+| `src/marktradar/data.py` | Downloads BAG files, reads three generations of file formats, validates |
+| `src/marktradar/features.py` | Builds the canton-level features, with care for timing |
+| `src/marktradar/model.py` | Model, prediction intervals, time-correct backtest |
+| `src/marktradar/pipeline.py` | The steps download → build → train, shared by CLI and updates |
+| `src/marktradar/registry.py` | Versioned models, quality gate, rollback |
+| `src/marktradar/monitoring.py` | Live check of past models on new data |
+| `src/marktradar/service.py` | Forecasts and scenarios, used by the API and the CLI |
+| `src/marktradar/api.py`, `web/` | REST API and the web interface (no external dependencies) |
+| `tests/` | Tests against a simulated BAG server, no network needed |
 
-- **Regionale Sicht**: BAG-Prämiendaten pro Prämienregion/Kanton (opendata.swiss) +
-  BFS-Bevölkerungsdaten → Wechselpotenzial je Region für die Vertriebssteuerung.
-- **Echte Prämienankündigungen** (September, priminfo.admin.ch) statt der realisierten
-  Durchschnittsprämie als Hebel-Feature.
-- **Erklärbarkeit pro Prognose** (SHAP) in der API ausgeben.
-- **Monitoring**: Prognosen speichern und nach Publikation der Ist-Daten automatisch auswerten.
-- **Dashboard** (Streamlit) auf der API für Kolleginnen und Kollegen ohne Technikhintergrund.
+Useful commands:
+
+```bash
+uv run marktradar --help
+uv run marktradar predict 8            # forecast for CSS (BAG number 8)
+uv run marktradar predict 8 --curve    # premium elasticity curve
+uv run marktradar backtest             # print the full backtest
+make lint test                         # code quality and tests
+```
+
+## What you can learn from this project
+
+If you are using it to sharpen your ML and deployment skills, these are the parts worth
+reading closely:
+
+- **Validating forecasts over time.** `model.backtest` trains only on the past for every
+  test year. A random train/test split would leak the future and look far better than it is.
+- **Avoiding leakage.** `features.py` documents when each piece of information becomes
+  known. An earlier version of this project used realised average premiums, which looked
+  more accurate but quietly used information from the future.
+- **Honest baselines.** A model is only as good as its margin over the simplest guess.
+- **Domain knowledge as constraints.** Monotonic constraints guarantee that a higher
+  premium never predicts more growth.
+- **Uncertainty.** Quantile regression plus conformal calibration, so the 80 % range
+  actually holds about 80 % of the time.
+- **Messy real-world data.** Three file formats, two encodings, two separators, total
+  rows mixed into the data. All handled in one place and covered by tests.
+- **MLOps.** Model registry, quality gate, data manifest, live monitoring, scheduled
+  retraining that ends in a pull request rather than silently changing production.
+- **Deployment.** Multi-stage Docker build, non-root container, health check, support
+  for corporate registries and TLS proxies, CI on every push.
+
+## Data sources
+
+- BAG premium open data via
+  [opendata.swiss: health-insurance-premiums](https://opendata.swiss/de/dataset/health-insurance-premiums)
+  (approved premiums and insured persons per insurer and canton).
+- BAG supervisory data (only used to look up insurer names).
+
+Forecasts are estimates based on public data, not causal statements, and should not be the
+only basis for a decision.

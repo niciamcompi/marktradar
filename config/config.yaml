@@ -1,41 +1,45 @@
-# Zentrale Konfiguration. Relative Pfade gelten ab dem Projektordner (marktradar/).
-# Jede Einstellung hier kann ohne Code-Änderung angepasst werden.
+# Central configuration. Relative paths are resolved from the project folder.
 
 data:
-  # BAG "Aufsichtsdaten OKP" – erscheint jährlich neu (Statistik der obligatorischen KV, T 5.01).
-  # `marktradar update` findet neue Ausgaben selbst und trägt URL + sha256 hier ein.
-  # Seite, auf der `marktradar update` automatisch nach der neusten Ausgabe sucht:
-  discovery_page: "https://www.bag.admin.ch/de/aufsichtsdaten-krankenversicherer"
-  source_url: "https://www.bag.admin.ch/dam/de/sd-web/RRUZlsq0gPk7/aufsichtsdaten-okp-1996-2024.xlsx"
-  sha256: "9f4f58cc9a9567fc16da3b299f5d86b73fcbeab1f3f831a8fdc8c548f7f1c214"
-  raw_path: "data/raw/aufsichtsdaten_okp.xlsx"
-  processed_path: "data/processed/panel.parquet"
-  # Ab 2006 haben alle Jahresblätter dieselbe Spaltencodierung (1, 3B, 4B, ...).
-  first_year: 2006
+  # BAG premium open data (opendata.swiss dataset "health-insurance-premiums").
+  # The catalogue API lists the current files and the yearly archives back to 2011.
+  catalog_url: "https://ckan.opendata.swiss/api/3/action/package_show?id=health-insurance-premiums"
+  # BAG supervisory data, only used to look up insurer names.
+  names_url: "https://www.bag.admin.ch/dam/de/sd-web/RRUZlsq0gPk7/aufsichtsdaten-okp-1996-2024.xlsx"
+  raw_dir: "data/raw"
+  processed_dir: "data/processed"
+  # Written by `marktradar download`; records which file versions the model was built from.
+  manifest_path: "config/data_manifest.json"
+  first_year: 2011
 
 features:
-  # Kleinstversicherer verrauschen das Signal (ein paar Dutzend Wechsel = ±20 %).
-  min_versicherte: 1000
-  # Veränderungen > ±50 % log-Marktanteil sind fast immer Fusionen/Bestandesübertragungen,
-  # kein Wechselverhalten -> werden aus dem Training ausgeschlossen.
-  max_abs_target: 0.5
+  # Insurer-canton combinations below this size are too noisy (a few dozen switchers = ±10 %).
+  min_versicherte: 500
+  # Share changes above ±50 % per year are almost always mergers or portfolio transfers,
+  # not switching behaviour, so they are excluded from training.
+  max_abs_target_per_year: 0.5
 
 model:
   learning_rate: 0.05
   max_iter: 300
   max_depth: 3
-  min_samples_leaf: 20
+  min_samples_leaf: 40
   l2_regularization: 1.0
-  # Unteres/oberes Quantil für das Prognoseintervall (80 %-Intervall).
+  # Lower/upper quantile of the prediction interval (80 % interval).
   quantiles: [0.1, 0.9]
   random_state: 42
+  # CPU threads for training. The data is small, so thread overhead outweighs the gain:
+  # 1 thread trains about twice as fast as 4 here.
+  n_threads: 1
+
+# 1 = forecast for the year after the latest insured-population data,
+# 2 = one year further, i.e. the latest premium year (the current switching season).
+horizons: [1, 2]
 
 backtest:
-  # Rolling-origin: für jedes Testjahr wird nur mit Daten aus früheren Jahren trainiert.
-  first_test_year: 2014
+  first_test_year: 2016
 
 registry:
   path: "models"
-  # Ein neues Modell wird nur produktiv gesetzt, wenn sein Backtest-MAE höchstens
-  # 2 % schlechter ist als das des aktuellen Produktionsmodells.
+  # A new model is only promoted if its backtest error is at most 2 % worse than production.
   promotion_tolerance: 0.02

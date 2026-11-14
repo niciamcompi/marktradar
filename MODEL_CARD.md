@@ -1,63 +1,78 @@
-# Model Card: Marktradar
+# Model card: Marktradar
 
-## Zweck
-Prognose der Veränderung des Marktanteils (Versichertenbestand) von Schweizer
-OKP-Versicherern vom Basisjahr *t* ins Folgejahr *t+1*, inklusive Szenario für die
-Prämienanpassung relativ zum Markt. Zielgruppe: Vertriebs- und Marktanalyse.
-**Nicht** gedacht für Tarifierung, Einzelpersonen-Entscheide oder als alleinige
-Entscheidungsgrundlage.
+## Purpose
 
-## Daten
-- Quelle: BAG, Statistik der obligatorischen Krankenversicherung, T 5.01
-  „Aufsichtsdaten OKP“, Jahre 2006–2024 (1163 Versicherer-Jahre, 90 Versicherer).
-- Öffentlich, aggregiert auf Versicherer-Ebene, keine Personendaten.
-- Ausgeschlossen: Versicherer < 1000 Versicherte; Übergänge mit |Δ log-Anteil| > 0.5
-  (Fusionen/Bestandesübertragungen, kein Wechselverhalten).
+Forecast how the market share of each Swiss health insurer (mandatory basic insurance)
+changes from the latest year with insured data (*t*) to *t+1* and *t+2*, per canton and
+nationally, including scenarios for the premium change relative to the market.
+Intended for sales and market analysis. **Not** intended for pricing, decisions about
+individuals, or as the sole basis for a decision.
 
-## Ziel und Features
-- Ziel: Δ log-Marktanteil t → t+1.
-- Features: Prämienanpassung t→t+1 relativ zum Markt (Szenario-Hebel), relatives
-  Prämienniveau, letzte Prämienanpassung, Vorjahreswachstum, Reserven, Verwaltungs-
-  kosten, Risikoausgleich, Gesamtergebnis (jeweils relativ zum Markt), Marktanteil.
+## Data
 
-## Modell
-`HistGradientBoostingRegressor` (scikit-learn), Median-Loss, Gewichtung √Bestand,
-monotone Constraints (Prämie ↑ ⇒ Wachstum nicht ↑). Intervall: Quantilmodelle 10 %/90 %,
-nachkalibriert mit Conformalized Quantile Regression auf Out-of-Time-Fehlern.
+- BAG premium open data (opendata.swiss, "health-insurance-premiums"):
+  approved premiums 2011–2027 and average insured persons per insurer and canton 2009–2025.
+- Public and aggregated per insurer and canton. No personal data.
+- Reference premium: adults, standard model, CHF 300 deductible, with accident cover,
+  averaged over premium regions within a canton.
+- Excluded from training: insurer-canton combinations below 500 insured persons, and
+  share changes above ±50 % per year (mergers and portfolio transfers, not switching).
 
-## Evaluation (Rolling-Origin, Basisjahre 2014–2023)
-| Basisjahr | MAE Modell | MAE konstant | Rangkorrelation |
-|---|---|---|---|
-| 2014 | 0.039 | 0.059 | 0.81 |
-| 2015 | 0.033 | 0.057 | 0.78 |
-| 2016 | 0.063 | 0.073 | 0.72 |
-| 2017 | 0.048 | 0.065 | 0.80 |
-| 2018 | 0.023 | 0.046 | 0.80 |
-| 2019 | 0.029 | 0.047 | 0.86 |
-| 2020 | 0.031 | 0.048 | 0.74 |
-| 2021 | 0.050 | 0.066 | 0.70 |
-| 2022 | 0.083 | 0.115 | 0.77 |
-| 2023 | 0.072 | 0.093 | 0.62 |
+## Target and features
 
-Mittel: MAE 0.047 vs. 0.067 (−30 %), Rangkorrelation 0.76, Intervallabdeckung 75 %
-(Ziel 80 %).
+- Target: change of the log market share within the canton from *t* to *t+h*.
+- Features: premium level relative to the canton market; last premium change relative to
+  the market; approved premium change(s) relative to the market for the forecast year(s)
+  (the scenario lever); average premium increase of the canton market; previous share
+  change; share within the canton.
+- All features are known at forecast time: approved premiums are published at the end of
+  September, before the switching deadline on 30 November.
+- Insurer financials (reserves, administrative costs, risk equalisation) were tested and
+  dropped, because they did not improve the backtest.
 
-## Bekannte Grenzen
-1. **Hebel-Feature ist ein Proxy.** Verwendet wird die Veränderung der *realisierten*
-   Durchschnittsprämie je Person, nicht die im September angekündigte Tarifänderung.
-   Diese wird auch durch die Bestandesmischung beeinflusst (gewinnt ein Versicherer
-   viele junge Versicherte, sinkt seine Durchschnittsprämie). Die Preiselastizität
-   wird dadurch vermutlich **überschätzt**. Szenarien als Richtgrösse lesen.
-2. **Strukturbruch 2022/2023**: Nach den starken Prämienerhöhungen 2023/2024 wechselten
-   deutlich mehr Personen; Fehler und Intervall-Unterdeckung sind in diesen Jahren höher.
-3. **Datenverzug**: Aufsichtsdaten erscheinen mit ca. 1 Jahr Verzögerung. Das Basisjahr
-   ist das letzte publizierte Jahr (aktuell 2024 → Prognose 2025).
-4. **Kleine Stichprobe**: ca. 40–60 Versicherer pro Jahr. Für kleine Kassen sind die
-   Intervalle breit.
-5. Gesamtmarktgrösse wird in `bestand_prognose` als konstant angenommen.
-6. Keine kausale Aussage: Das Modell lernt Zusammenhänge aus Beobachtungsdaten.
+## Model
 
-## Verantwortung
-Modellartefakte (`models/<version>/metadata.json`) enthalten Daten-Hash, Git-Commit,
-Konfiguration und Backtest. Neue Versionen werden nur nach bestandenem Quality Gate
-produktiv.
+One model per horizon (1 and 2 years): scikit-learn `HistGradientBoostingRegressor` with
+absolute-error loss, weighted by the square root of insured persons, with monotonic
+constraints (a relatively higher premium never increases predicted growth).
+Prediction interval: 10 % and 90 % quantile models, recalibrated with conformalized
+quantile regression on out-of-time errors. National figures are insured-weighted sums of
+the canton forecasts.
+
+## Evaluation
+
+Rolling-origin backtest: for base year *T*, the model is trained only on base years whose
+outcome was known at *T*. Errors are for the national market share per insurer.
+
+| Horizon | Test years | Error model | Error "share unchanged" | Improvement | Rank correlation | Interval coverage (target 80 %) |
+|---|---|---|---|---|---|---|
+| 1 year | 2017–2025 | 0.047 | 0.058 | 20 % | 0.61 | 76 % |
+| 2 years | 2018–2025 | 0.097 | 0.115 | 16 % | 0.54 | 72 % |
+
+Per year, the improvement is smallest for 2023–2025, the years after the large premium
+increases, when switching patterns changed.
+
+## Known limitations
+
+1. **Lots of switching is not explained by premiums.** Service, brand, brokers and
+   supplementary insurance are not in public data. Treat forecasts as one input among others.
+2. **Regime changes.** After the premium shocks of 2023/2024 accuracy dropped and the
+   intervals covered less than 80 %.
+3. **Reference premium only.** Prices of alternative models (HMO, telemedicine) and
+   other deductibles are not used; insurers with a different model mix may react differently.
+4. **Constant market size.** `bestand_prognose` assumes the size of each canton market
+   stays the same.
+5. **National intervals are conservative.** They assume all cantons of an insurer move
+   together, which overstates the uncertainty somewhat.
+6. **No causal claims.** The model learns associations from observational data. A
+   scenario shows what similar situations looked like in the past, not a guaranteed effect.
+7. **Earlier version.** A previous version used realised average premiums from the
+   supervisory data and reported higher accuracy (rank correlation 0.76). That figure was
+   too optimistic, because realised premiums partly reflect who switched. The current
+   numbers use only information available in advance.
+
+## Accountability
+
+Every model version stores its metrics, data fingerprint, configuration and git commit
+in `models/<version>/metadata.json`. New versions only go into production after passing
+the quality gate; the live check on new data is recorded in `models/monitoring.json`.

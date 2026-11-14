@@ -1,28 +1,28 @@
 # syntax=docker/dockerfile:1
-# Multi-Stage-Build:
-#   1. "base":    Python-Umgebung mit allen Abhängigkeiten (aus uv.lock, exakt gepinnt)
-#   2. "train":   lädt die BAG-Daten, prüft sie und trainiert das Modell
-#   3. "runtime": schlankes Image nur mit Code, Modell und aufbereiteten Daten, non-root
-# Ergebnis: Ein Image = eine exakt reproduzierbare Modellversion.
+# Multi-stage build:
+#   1. "base":    Python environment with all dependencies (exactly pinned by uv.lock)
+#   2. "train":   downloads the BAG data, validates it and trains the model
+#   3. "runtime": slim image with only code, model and processed data, non-root
+# Result: one image = one reproducible model version.
 #
-# Firmenumgebung (interne Registry, TLS-Proxy mit eigenem Zertifikat):
+# Corporate networks (internal registry, TLS proxy with its own certificate):
 #   docker build \
-#     --build-arg PYTHON_IMAGE=registry.firma.ch/python:3.12-slim \
-#     --secret id=ca_bundle,src=/pfad/zu/firmen-ca.pem \
+#     --build-arg PYTHON_IMAGE=registry.example.ch/python:3.12-slim \
+#     --secret id=ca_bundle,src=/path/to/corporate-ca.pem \
 #     -t marktradar .
-# Das Zertifikat wird nur während des Builds eingebunden und landet nicht im Image.
+# The certificate is only mounted during the build and never ends up in the image.
 
 ARG PYTHON_IMAGE=python:3.12-slim
 
 FROM ${PYTHON_IMAGE} AS base
 ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy PYTHONUNBUFFERED=1
 WORKDIR /app
-# Hilfsskript: setzt das optionale Firmen-CA-Zertifikat für pip, uv und httpx
+# Helper: applies the optional corporate CA certificate for pip, uv and httpx
 RUN printf '#!/bin/sh\nif [ -f /run/secrets/ca_bundle ]; then export SSL_CERT_FILE=/run/secrets/ca_bundle PIP_CERT=/run/secrets/ca_bundle; fi\nexec "$@"\n' \
       > /usr/local/bin/with-ca && chmod +x /usr/local/bin/with-ca
 RUN --mount=type=secret,id=ca_bundle,required=false \
     with-ca pip install --no-cache-dir uv==0.11.32
-# Erst nur die Abhängigkeiten -> Docker-Cache bleibt gültig, solange uv.lock gleich bleibt
+# Dependencies first -> the Docker cache stays valid as long as uv.lock is unchanged
 COPY pyproject.toml uv.lock README.md ./
 RUN --mount=type=secret,id=ca_bundle,required=false \
     with-ca uv sync --frozen --no-dev --no-install-project

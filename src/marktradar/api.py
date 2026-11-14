@@ -1,7 +1,6 @@
-"""REST-API (FastAPI).
+"""REST API and web UI (FastAPI).
 
-Start lokal:  uv run marktradar serve   -> Oberfläche: http://localhost:8000/
-Doku:         http://localhost:8000/docs  (interaktiv, automatisch aus den Typen erzeugt)
+Run locally:  uv run marktradar serve   -> UI at http://localhost:8000, API docs at /docs
 """
 
 from __future__ import annotations
@@ -11,7 +10,6 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 
-import pandas as pd
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -19,26 +17,31 @@ from pydantic import BaseModel, Field
 
 from marktradar import __version__, monitoring
 from marktradar.config import Settings, load_settings
+from marktradar.pipeline import load_features, load_names
 from marktradar.registry import load_production
 from marktradar.service import ForecastService, UnknownInsurerError
 
 WEB_DIR = Path(__file__).parent / "web"
-PP_LIMIT = 15.0  # Szenarien ausserhalb ±15 %-Punkte liegen weit ausserhalb der Trainingsdaten
+PP_LIMIT = 15.0  # scenarios beyond ±15 pp are far outside anything in the training data
 
 
 class PrognoseRequest(BaseModel):
     bag_nr: int = Field(..., examples=[8])
-    praemienanpassung_rel_pp: float = Field(
-        0.0,
+    horizont: int | None = Field(
+        None, description="1 or 2 years after the base year; default: latest"
+    )
+    praemienanpassung_rel_pp: float | None = Field(
+        None,
         ge=-PP_LIMIT,
         le=PP_LIMIT,
-        description="Prämienanpassung relativ zum Markt in %-Punkten "
-        "(+2 = Prämie steigt 2 %-Punkte stärker als der Marktdurchschnitt).",
+        description="Premium change relative to the canton markets in percentage points "
+        "(+2 = 2 pp more than the market). Empty = the actually approved tariffs.",
     )
 
 
 class ElastizitaetRequest(BaseModel):
     bag_nr: int = Field(..., examples=[8])
+    horizont: int | None = None
     von_pp: float = Field(-5.0, ge=-PP_LIMIT, le=PP_LIMIT)
     bis_pp: float = Field(5.0, ge=-PP_LIMIT, le=PP_LIMIT)
     schritt_pp: float = Field(1.0, gt=0.1, le=5)
@@ -48,26 +51,27 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         cfg = settings or load_settings()
-        model, metadata = load_production(cfg.registry.path)
-        panel = pd.read_parquet(cfg.data.processed_path)
-        app.state.service = ForecastService(
-            model, panel, min_versicherte=cfg.features.min_versicherte
-        )
+        models, metadata = load_production(cfg.registry.path)
+        app.state.service = ForecastService(models, load_features(cfg), load_names(cfg))
         app.state.metadata = metadata
         app.state.registry_path = cfg.registry.path
         yield
 
     app = FastAPI(
-        title="Marktradar Krankenversicherung",
+        title="Marktradar",
         version=__version__,
-        description="Prognose der Marktanteilsentwicklung von Schweizer "
-        "Krankenversicherern (OKP) auf Basis öffentlicher BAG-Aufsichtsdaten.",
+        description="Market share forecasts for Swiss health insurers (mandatory basic "
+        "insurance), built on public BAG premium and insured-population data.",
         lifespan=lifespan,
     )
 
-    def service(request: Request) -> ForecastService:
-        svc: ForecastService = request.app.state.service
-        return svc
+    def svc(request: Request) -> ForecastService:
+        service: ForecastService = request.app.state.service
+        return service
+
+    def check_horizon(request: Request, h: int | None) -> None:
+        if h is not None and h not in svc(request).horizons:
+            raise HTTPException(422, f"Horizon must be one of {svc(request).horizons}")
 
     @app.get("/", include_in_schema=False)
     def index() -> FileResponse:
@@ -81,39 +85,49 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.get("/modell")
     def modell(request: Request) -> dict[str, Any]:
-        """Version, Trainingsdaten und Backtest-Metriken des Produktionsmodells."""
+        """Version, data, backtest metrics and live monitoring of the production model."""
         meta: dict[str, Any] = dict(request.app.state.metadata)
         meta["live_monitoring"] = monitoring.load(request.app.state.registry_path)
+        meta["horizonte_verfuegbar"] = svc(request).horizons
+        meta["basisjahr"] = svc(request).basisjahr
         return meta
 
     @app.get("/versicherer")
     def versicherer(request: Request) -> list[dict[str, Any]]:
-        return service(request).versicherer()
+        return svc(request).versicherer()
+
+    @app.get("/kantone")
+    def kantone(request: Request) -> list[dict[str, Any]]:
+        return svc(request).kantone()
 
     @app.post("/prognose")
     def prognose(body: PrognoseRequest, request: Request) -> dict[str, Any]:
+        check_horizon(request, body.horizont)
         try:
-            return service(request).prognose(body.bag_nr, body.praemienanpassung_rel_pp).as_dict()
+            return svc(request).prognose(body.bag_nr, body.horizont, body.praemienanpassung_rel_pp)
         except UnknownInsurerError:
-            raise HTTPException(404, f"Unbekannte BAG-Nr. {body.bag_nr}") from None
+            raise HTTPException(404, f"Unknown BAG number {body.bag_nr}") from None
 
     @app.post("/elastizitaet")
     def elastizitaet(body: ElastizitaetRequest, request: Request) -> list[dict[str, Any]]:
+        check_horizon(request, body.horizont)
         if body.von_pp >= body.bis_pp:
-            raise HTTPException(422, "von_pp muss kleiner als bis_pp sein")
+            raise HTTPException(422, "von_pp must be smaller than bis_pp")
         try:
-            return service(request).elastizitaet(
-                body.bag_nr, body.von_pp, body.bis_pp, body.schritt_pp
+            return svc(request).elastizitaet(
+                body.bag_nr, body.horizont, body.von_pp, body.bis_pp, body.schritt_pp
             )
         except UnknownInsurerError:
-            raise HTTPException(404, f"Unbekannte BAG-Nr. {body.bag_nr}") from None
+            raise HTTPException(404, f"Unknown BAG number {body.bag_nr}") from None
 
     @app.get("/markt")
     def markt(
         request: Request,
-        praemienanpassung_rel_pp: float = Query(0.0, ge=-PP_LIMIT, le=PP_LIMIT),
+        horizont: int | None = None,
+        kanton: str | None = Query(None, min_length=2, max_length=2),
     ) -> list[dict[str, Any]]:
-        """Alle Versicherer, sortiert nach prognostiziertem Marktanteilswachstum."""
-        return service(request).markt(praemienanpassung_rel_pp)
+        """All insurers, sorted by forecast market share growth (approved tariffs)."""
+        check_horizon(request, horizont)
+        return svc(request).markt(horizont, kanton.upper() if kanton else None)
 
     return app

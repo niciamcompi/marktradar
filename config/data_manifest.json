@@ -1,0 +1,80 @@
+{
+  "files": {
+    "Praemien_CH.csv": {
+      "url": "https://opendata.bagnet.ch/?r=/download&path=L1ByYWVtaWVuL1Byw6RtaWVuX0NILmNzdg%3D%3D",
+      "sha256": "957fef82f47eb8d8243e01be17699d864b98a741c466f5d07015c6e91fecfdaa"
+    },
+    "Versichertenbestand_CH.csv": {
+      "url": "https://opendata.bagnet.ch/?r=/download&path=L1ByYWVtaWVuL1ZlcnNpY2hlcnRlbmJlc3RhbmRfQ0guY3N2",
+      "sha256": "f58ccae6b4924ff41b43ede5e26cdc8464616a443cff36fc0ac4ad3638c52c71"
+    },
+    "archiv_2011.zip": {
+      "url": "https://opendata.bagnet.ch/?r=/download&path=L1ByYWVtaWVuL0FyY2hpdl9QcmFlbWllbl8yMDExLnppcA%3D%3D",
+      "sha256": "183ed6942b0eccf6661243dbdf4cc94709eb3f0d77057f66172c7ba370f79990"
+    },
+    "archiv_2012.zip": {
+      "url": "https://opendata.bagnet.ch/?r=/download&path=L1ByYWVtaWVuL0FyY2hpdl9QcmFlbWllbl8yMDEyLnppcA%3D%3D",
+      "sha256": "5ed6158b8a509c6a6bde8b288e2c39684034c90538e08ea7ac9431b538deca4b"
+    },
+    "archiv_2013.zip": {
+      "url": "https://opendata.bagnet.ch/?r=/download&path=L1ByYWVtaWVuL0FyY2hpdl9QcmFlbWllbl8yMDEzLnppcA%3D%3D",
+      "sha256": "919ee63e542579627618cdeec4011e80e140913a7ef837375d4bb56fcd47a2c3"
+    },
+    "archiv_2014.zip": {
+      "url": "https://opendata.bagnet.ch/?r=/download&path=L1ByYWVtaWVuL0FyY2hpdl9QcmFlbWllbl8yMDE0LnppcA%3D%3D",
+      "sha256": "828175413a3735583690f67f29336308ff094847705d2c5a446a97a1a51f5410"
+    },
+    "archiv_2015.zip": {
+      "url": "https://opendata.bagnet.ch/?r=/download&path=L1ByYWVtaWVuL0FyY2hpdl9QcmFlbWllbl8yMDE1LnppcA%3D%3D",
+      "sha256": "e0dad090232e983e3761412967beb5c8ff945beb256442770136a633be955861"
+    },
+    "archiv_2016.zip": {
+      "url": "https://opendata.bagnet.ch/?r=/download&path=L1ByYWVtaWVuL0FyY2hpdl9QcmFlbWllbl8yMDE2LnppcA%3D%3D",
+      "sha256": "049402acb176aafe9525e15c0bb12bdcfb981e0a10fed29a2e504f1b35822db5"
+    },
+    "archiv_2017.zip": {
+      "url": "https://opendata.bagnet.ch/?r=/download&path=L1ByYWVtaWVuL0FyY2hpdl9QcmFlbWllbl8yMDE3LnppcA%3D%3D",
+      "sha256": "e42688adb33de9e355a49513446303db70bfa769bf339295e2b3847efaec864c"
+    },
+    "archiv_2018.zip": {
+      "url": "https://opendata.bagnet.ch/?r=/download&path=L1ByYWVtaWVuL0FyY2hpdl9QcmFlbWllbl8yMDE4LnppcA%3D%3D",
+      "sha256": "9ebee992d3de77e35b9ccf543f7c98e7b68b46a072737684eedb591480faf8cc"
+    },
+    "archiv_2019.zip": {
+      "url": "https://opendata.bagnet.ch/?r=/download&path=L1ByYWVtaWVuL0FyY2hpdl9QcmFlbWllbl8yMDE5LnppcA%3D%3D",
+      "sha256": "e7c6269f6f9bc3d9512b7f0f14a47af76630d1578fa8776f3a182de5fadee1a4"
+    },
+    "archiv_2020.zip": {
+      "url": "https://opendata.bagnet.ch/?r=/download&path=L1ByYWVtaWVuL0FyY2hpdl9QcmFlbWllbl8yMDIwLnppcA%3D%3D",
+      "sha256": "05151cbe86ad4795c4bbf997989ca1e4759a5084c84569bfc38f0c390183610f"
+    },
+    "archiv_2021.zip": {
+      "url": "https://opendata.bagnet.ch/?r=/download&path=L1ByYWVtaWVuL0FyY2hpdl9QcmFlbWllbl8yMDIxLnppcA%3D%3D",
+      "sha256": "d0090e591290cb88911a03aaf2d05048fb35838b0dbdac05d6f93614bce11387"
+    },
+    "archiv_2022.zip": {
+      "url": "https://opendata.bagnet.ch/?r=/download&path=L1ByYWVtaWVuL0FyY2hpdl9QcmFlbWllbl8yMDIyLnppcA%3D%3D",
+      "sha256": "5423cc0ec843e902c8262a4da2943936dc5916f7e2b73d6dfa2a0a86d73c1f62"
+    },
+    "archiv_2023.zip": {
+      "url": "https://opendata.bagnet.ch/?r=/download&path=L1ByYWVtaWVuL0FyY2hpdl9QcmFlbWllbl8yMDIzLnppcA%3D%3D",
+      "sha256": "1a5baf4d05029611dfa629f23967b4eee5870b5f70eab2291b105b7844fcf7ec"
+    },
+    "archiv_2024.zip": {
+      "url": "https://opendata.bagnet.ch/?r=/download&path=L1ByYWVtaWVuL0FyY2hpdl9QcmFlbWllbl8yMDI0LnppcA%3D%3D",
+      "sha256": "ca9bbac313ace6cfff433a12c943188b6d923bffc8e2f6916cbda34ca3bee6eb"
+    },
+    "archiv_2025.zip": {
+      "url": "https://opendata.bagnet.ch/?r=/download&path=L1ByYWVtaWVuL0FyY2hpdl9QcmFlbWllbl8yMDI1LnppcA%3D%3D",
+      "sha256": "2cbc7344db9d754d62d0005a78e27a74a00664af97ef957a531e6e57ec411fd0"
+    },
+    "archiv_2026.zip": {
+      "url": "https://opendata.bagnet.ch/?r=/download&path=L1ByYWVtaWVuL0FyY2hpdl9QcmFlbWllbl8yMDI2LnppcA%3D%3D",
+      "sha256": "01ef32ab0bd8e25ee01ebd3d1d601487ca21f1569b55da3edcf9f9170f99dc78"
+    },
+    "aufsichtsdaten.xlsx": {
+      "url": "https://www.bag.admin.ch/dam/de/sd-web/RRUZlsq0gPk7/aufsichtsdaten-okp-1996-2024.xlsx",
+      "sha256": "9f4f58cc9a9567fc16da3b299f5d86b73fcbeab1f3f831a8fdc8c548f7f1c214"
+    }
+  }
+}

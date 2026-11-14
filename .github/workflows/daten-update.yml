@@ -1,18 +1,21 @@
-# Selbstständige Aktualisierung ("Continuous Training"):
-# Jede Woche wird auf der BAG-Seite nach einer neuen Ausgabe der Aufsichtsdaten gesucht.
-# Gibt es eine, wird
-#   1. das aktuelle Produktionsmodell aus der in config.yaml fixierten Datenversion rekonstruiert,
-#   2. dieses Modell an den neuen, nie gesehenen Jahren gemessen (Live-Güte),
-#   3. ein neues Modell trainiert und durch das Quality Gate geschickt,
-#   4. bei Erfolg ein Pull Request mit der neuen Datenversion + Bericht eröffnet.
-# Du entscheidest per Merge, ob die neue Version übernommen wird.
-# Voraussetzung: Settings -> Actions -> General -> "Allow GitHub Actions to create
-# and approve pull requests" aktivieren.
-name: daten-update
+# Self-update ("continuous training").
+# Every Monday this checks the BAG catalogue for new premium or insured-population data.
+# The BAG publishes once a year (end of September), so most runs end with "no new data".
+# When something new appears, `marktradar update`
+#   1. measures the current production model on the years it has never seen (live check),
+#   2. retrains and runs the quality gate,
+#   3. records the new data version in config/data_manifest.json,
+# and this workflow opens a pull request with a report. You decide by merging.
+#
+# Raw archives and the model registry are kept between runs in the Actions cache, so
+# the archives are downloaded only once and the live check has a previous model to test.
+# One-time setup: Settings -> Actions -> General -> "Allow GitHub Actions to create and
+# approve pull requests".
+name: data-update
 
 on:
   schedule:
-    - cron: "23 6 * * 1"  # jeden Montag 06:23 UTC
+    - cron: "23 6 * * 1"  # Mondays 06:23 UTC
   workflow_dispatch:
 
 permissions:
@@ -27,13 +30,16 @@ jobs:
       - uses: astral-sh/setup-uv@v6
       - run: uv sync --frozen
 
-      - name: Produktionsmodell aus fixierter Datenversion rekonstruieren
-        run: |
-          uv run marktradar download
-          uv run marktradar build
-          uv run marktradar train --force
+      - name: Restore raw data and model registry
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            data/raw
+            models
+          key: marktradar-state-${{ github.run_id }}
+          restore-keys: marktradar-state-
 
-      - name: Nach neuen BAG-Daten suchen und ggf. neu trainieren
+      - name: Look for new BAG data, retrain if needed
         id: update
         run: |
           set +e
@@ -41,26 +47,28 @@ jobs:
           echo "exit=$?" >> "$GITHUB_OUTPUT"
           cat report.md >> "$GITHUB_STEP_SUMMARY"
 
-      - uses: actions/upload-artifact@v4
+      - name: Save raw data and model registry
+        if: always()
+        uses: actions/cache/save@v4
         with:
-          name: update-${{ github.run_id }}
           path: |
-            report.md
-            models/
+            data/raw
+            models
+          key: marktradar-state-${{ github.run_id }}
 
-      - name: Pull Request mit neuer Datenversion
+      - name: Pull request with the new data version
         if: steps.update.outputs.exit == '0'
         uses: peter-evans/create-pull-request@v7
         with:
-          branch: auto/daten-update
-          add-paths: config/config.yaml
-          commit-message: "Neue BAG-Aufsichtsdaten übernehmen"
-          title: "Neue BAG-Aufsichtsdaten: Modell neu trainiert"
+          branch: auto/data-update
+          add-paths: config/data_manifest.json
+          commit-message: "Update to the latest BAG premium data"
+          title: "New BAG data: model retrained"
           body-path: report.md
           delete-branch: true
 
-      - name: Kandidat abgelehnt -> Workflow rot, damit du benachrichtigt wirst
+      - name: Candidate rejected -> fail the run so you get notified
         if: steps.update.outputs.exit == '2'
         run: |
-          echo "::error::Neues Modell hat das Quality Gate nicht bestanden, siehe Zusammenfassung."
+          echo "::error::The new model did not pass the quality gate, see the run summary."
           exit 1

@@ -476,6 +476,7 @@ dependencies = [
     { name = "pydantic" },
     { name = "pyyaml" },
     { name = "scikit-learn" },
+    { name = "threadpoolctl" },
     { name = "typer" },
     { name = "uvicorn" },
 ]
@@ -501,6 +502,7 @@ requires-dist = [
     { name = "pydantic", specifier = ">=2.12.5" },
     { name = "pyyaml", specifier = ">=6.0.3" },
     { name = "scikit-learn", specifier = ">=1.9.1" },
+    { name = "threadpoolctl", specifier = ">=3.8.0" },
     { name = "typer", specifier = ">=0.29.1" },
     { name = "uvicorn", specifier = ">=0.34.0" },
 ]

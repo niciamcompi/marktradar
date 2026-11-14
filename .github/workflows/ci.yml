@@ -1,7 +1,7 @@
-# CI/CD für marktradar
-#  - bei jedem Push/PR: Lint, Typen, Tests (synthetische Daten, kein Netzwerk nötig)
-#  - monatlich + manuell: echtes Training auf BAG-Daten ("Continuous Training"),
-#    Modell + Metriken als Artefakt, danach Docker-Image bauen und testen
+# CI/CD for marktradar
+#  - every push/PR: lint, types, tests (synthetic data, no network needed)
+#  - monthly + manual: real training on BAG data, model + metrics as an artifact,
+#    then build the Docker image and smoke-test it
 name: marktradar
 
 on:
@@ -44,11 +44,11 @@ jobs:
       - run: uv run marktradar download
       - run: uv run marktradar build
       - run: uv run marktradar train
-      - name: Metriken in die Job-Zusammenfassung
+      - name: Metrics in the job summary
         run: |
           echo '### Backtest' >> "$GITHUB_STEP_SUMMARY"
           echo '```json' >> "$GITHUB_STEP_SUMMARY"
-          cat models/*/metadata.json | uv run python -c "import json,sys; print(json.dumps(json.load(sys.stdin)['backtest'], indent=2))" >> "$GITHUB_STEP_SUMMARY"
+          cat models/*/metadata.json | uv run python -c "import json,sys; m=json.load(sys.stdin); print(json.dumps({h: v['backtest'] for h, v in m['horizonte'].items()}, indent=2))" >> "$GITHUB_STEP_SUMMARY"
           echo '```' >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v4
         with:
@@ -64,7 +64,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: docker build -t marktradar .
-      - name: Smoke-Test des Containers
+      - name: Smoke-test the container
         run: |
           docker run -d --name mr -p 8000:8000 marktradar
           for i in $(seq 1 30); do curl -fsS localhost:8000/health && break; sleep 1; done
