@@ -99,6 +99,49 @@ That is useful, but not magic. Switching depends on a lot that is not in public 
 of 2023 and 2024 were clearly harder to predict. The [model card](MODEL_CARD.md) lists
 all known limitations.
 
+## Classic ML or transformers?
+
+`marktradar compare` puts ten approaches through the very same backtest, from "nothing
+changes" to the newest foundation models. Two years ahead (the full table, including one
+year ahead, is in [docs/model_comparison.md](docs/model_comparison.md)):
+
+| Model | Better than "share stays the same" | Seconds per test year (CPU) |
+|---|---|---|
+| TabPFN v2, transformer for tables (2025) | +18 % | 33 |
+| **Gradient boosting (in production)** | **+16 %** | **2** |
+| Random forest | +14 % | 2 |
+| LightGBM | +13 % | 1 |
+| Linear regression | +12 % | 0 |
+| Chronos-2 by Amazon, time-series transformer, zero-shot (2025) | −2 % to −3 % | 1–3 |
+| Chronos-2, fine-tuned on our data | −4 % | 215 |
+| "Last year's trend continues" | −153 % | 0 |
+
+What this shows:
+
+- **TabPFN is the most accurate, but only just.** It wins in 5 of 8 test years, by a
+  margin that 8 years of data cannot distinguish from luck. It needs about 15 times the
+  compute and several GB of PyTorch, and it cannot guarantee that a higher premium never
+  predicts more growth, which the scenario slider relies on. So gradient boosting stays
+  in production, and the comparison is rerun when new data arrives.
+- **Chronos-2 does not help here, even fine-tuned.** It is built for long, regular series
+  (hourly or daily data with seasonality). Here each series has at most 15 yearly points,
+  and the signal is not in a series' own history but in the comparison with competitors.
+  That is a table problem, which is why the table models win.
+- **Even a simple linear model gets most of the way.** The features carry the signal;
+  the choice of algorithm matters less than getting the data and the timing right.
+
+To run it yourself (installs PyTorch, about 1.5 GB):
+
+```bash
+uv sync --extra benchmark
+uv run marktradar compare            # all models except Chronos fine-tuning (~25 min)
+uv run marktradar compare --slow     # including fine-tuning (~1.5 h on a laptop CPU)
+```
+
+The results also appear in the web interface under *Modellgüte*. TabPFN is pinned to
+version 2 on purpose: its licence (Apache 2.0 with an attribution clause) allows commercial
+use, while TabPFN 2.5 and later are licensed for non-commercial use only.
+
 ## It updates itself
 
 New BAG data appears once a year. `marktradar update` (or `tasks.ps1 update`) handles it:
@@ -136,6 +179,7 @@ If a new model ever turns out worse in practice, go back with
 | `src/marktradar/pipeline.py` | The steps download → build → train, shared by CLI and updates |
 | `src/marktradar/registry.py` | Versioned models, quality gate, rollback |
 | `src/marktradar/monitoring.py` | Live check of past models on new data |
+| `src/marktradar/benchmark.py` | Model comparison, from baselines to transformers |
 | `src/marktradar/service.py` | Forecasts and scenarios, used by the API and the CLI |
 | `src/marktradar/api.py`, `web/` | REST API and the web interface (no external dependencies) |
 | `tests/` | Tests against a simulated BAG server, no network needed |
@@ -161,6 +205,8 @@ reading closely:
   known. An earlier version of this project used realised average premiums, which looked
   more accurate but quietly used information from the future.
 - **Honest baselines.** A model is only as good as its margin over the simplest guess.
+- **Comparing models fairly.** Every candidate, from linear regression to transformers,
+  runs through the same backtest. Newer is not automatically better.
 - **Domain knowledge as constraints.** Monotonic constraints guarantee that a higher
   premium never predicts more growth.
 - **Uncertainty.** Quantile regression plus conformal calibration, so the 80 % range

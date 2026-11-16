@@ -8,16 +8,30 @@ market-share forecast per insurer (lower is better).
 
 | Model | Family | Error | Better than baseline | Rank corr. | 80 % interval coverage | Seconds per year |
 |---|---|---|---|---|---|---|
+| TabPFN v2 (tabular transformer) | Transformer | 0.0466 | +20% | 0.64 | 71% | 33.6 |
+| Gradient boosting (production model) | Classic ML | 0.0467 | +19% | 0.61 | 69% | 1.9 |
+| Random forest | Classic ML | 0.0476 | +18% | 0.63 | – | 2.3 |
+| LightGBM | Classic ML | 0.0500 | +14% | 0.61 | 65% | 0.7 |
 | Linear regression (Ridge) | Classic statistics | 0.0500 | +14% | 0.50 | – | 0.0 |
-| Baseline: share stays the same | Baseline | 0.0581 | +0% | nan | – | 0.0 |
+| Chronos-2 fine-tuned, with premiums | Transformer | 0.0571 | +2% | 0.51 | 81% | 201.7 |
+| Baseline: share stays the same | Baseline | 0.0581 | +0% | – | – | 0.0 |
+| Chronos-2 zero-shot, with premiums | Transformer | 0.0592 | -2% | 0.35 | 89% | 2.8 |
+| Chronos-2 zero-shot, history only | Transformer | 0.0600 | -3% | 0.27 | 87% | 1.3 |
 | Baseline: last year's trend continues | Baseline | 0.1233 | -112% | 0.33 | – | 0.0 |
 
 ## Forecast 2 years ahead
 
 | Model | Family | Error | Better than baseline | Rank corr. | 80 % interval coverage | Seconds per year |
 |---|---|---|---|---|---|---|
+| TabPFN v2 (tabular transformer) | Transformer | 0.0946 | +18% | 0.53 | 71% | 32.7 |
+| Gradient boosting (production model) | Classic ML | 0.0973 | +16% | 0.54 | 70% | 2.0 |
+| Random forest | Classic ML | 0.0985 | +14% | 0.57 | – | 2.4 |
+| LightGBM | Classic ML | 0.0998 | +13% | 0.54 | 67% | 0.7 |
 | Linear regression (Ridge) | Classic statistics | 0.1014 | +12% | 0.50 | – | 0.0 |
-| Baseline: share stays the same | Baseline | 0.1152 | +0% | nan | – | 0.0 |
+| Baseline: share stays the same | Baseline | 0.1152 | +0% | – | – | 0.0 |
+| Chronos-2 zero-shot, history only | Transformer | 0.1172 | -2% | 0.20 | 79% | 1.1 |
+| Chronos-2 zero-shot, with premiums | Transformer | 0.1186 | -3% | 0.35 | 82% | 3.1 |
+| Chronos-2 fine-tuned, with premiums | Transformer | 0.1198 | -4% | 0.38 | 78% | 215.2 |
 | Baseline: last year's trend continues | Baseline | 0.2917 | -153% | 0.19 | – | 0.0 |
 
 Interval coverage is shown before conformal calibration (raw model output), so it is

@@ -365,7 +365,10 @@ function renderComparison() {
   const all = (state.vergleich?.zusammenfassung || []).filter((r) => r.horizont === state.qualityHorizon);
   $("vergleich").hidden = !all.length;
   if (!all.length) return;
-  const rows = all.filter((r) => r.modell !== "konstant");
+  // far worse than the baseline would squash all other bars: table only, named in the caption
+  const OUTLIER = -0.5;
+  const rows = all.filter((r) => r.modell !== "konstant" && r.verbesserung_vs_konstant >= OUTLIER);
+  const outliers = all.filter((r) => r.verbesserung_vs_konstant < OUTLIER);
   const host = $("vergleich-chart");
   host.innerHTML = "";
   const vals = rows.map((r) => r.verbesserung_vs_konstant * 100);
@@ -401,7 +404,9 @@ function renderComparison() {
   const ahead = state.qualityHorizon === 1 ? "ein Jahr" : "zwei Jahre";
   $("vergleich-caption").textContent =
     `Wie viel kleiner ist der Fehler als bei „Marktanteil bleibt gleich“ (Prognosen ${ahead} im Voraus)? ` +
-    `Alle Modelle im gleichen Backtest; fett = Modell im Einsatz.`;
+    `Alle Modelle im gleichen Backtest; fett = Modell im Einsatz.` +
+    (outliers.length ? ` Nicht im Diagramm, weil weit schlechter: ${outliers.map((r) =>
+      `${r.name} (${fmtSigned(r.verbesserung_vs_konstant * 100, 0)} %)`).join(", ")}.` : "");
   $("vergleich-table").innerHTML = table(
     ["Modell", "Familie", "Fehler %", "Besser als Baseline", "Rangkorrelation", "80 %-Abdeckung (roh)", "Sekunden/Jahr"],
     all.map((r) => [r.name, r.familie, nf(1).format(r.mae_modell * 100), `${fmtSigned(r.verbesserung_vs_konstant * 100, 0)} %`,

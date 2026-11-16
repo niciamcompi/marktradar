@@ -52,6 +52,15 @@ outcome was known at *T*. Errors are for the national market share per insurer.
 Per year, the improvement is smallest for 2023–2025, the years after the large premium
 increases, when switching patterns changed.
 
+## Alternatives considered
+
+The same backtest was run for linear regression, random forest, LightGBM, TabPFN v2 and
+Chronos-2 (zero-shot and fine-tuned); see `docs/model_comparison.md`. TabPFN v2 was
+slightly more accurate (+18 % vs. +16 % two years ahead, +20 % vs. +19 % one year ahead),
+a difference within year-to-year noise, at about 15 times the compute and without
+monotonic guarantees. Chronos-2 did not beat the "share unchanged" baseline. Gradient
+boosting therefore remains the production model.
+
 ## Known limitations
 
 1. **Lots of switching is not explained by premiums.** Service, brand, brokers and
