@@ -5,6 +5,7 @@ Run locally:  uv run marktradar serve   -> UI at http://localhost:8000, API docs
 
 from __future__ import annotations
 
+import json
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -91,6 +92,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         meta["horizonte_verfuegbar"] = svc(request).horizons
         meta["basisjahr"] = svc(request).basisjahr
         return meta
+
+    @app.get("/modellvergleich")
+    def modellvergleich(request: Request) -> dict[str, Any]:
+        """Results of `marktradar compare` (empty if it has not been run)."""
+        path = request.app.state.registry_path / "benchmark.json"
+        if not path.exists():
+            return {"zusammenfassung": [], "pro_jahr": []}
+        data: dict[str, Any] = json.loads(path.read_text(encoding="utf-8"))
+        return data
 
     @app.get("/versicherer")
     def versicherer(request: Request) -> list[dict[str, Any]]:

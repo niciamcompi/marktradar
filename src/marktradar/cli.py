@@ -178,6 +178,44 @@ def _markdown_report(outcome: pipeline.TrainOutcome, live: list[dict[str, Any]])
 
 
 @app.command()
+def compare(
+    config: ConfigOpt = None,
+    models: Annotated[
+        str | None, typer.Option(help="Comma-separated model keys (default: all except slow ones)")
+    ] = None,
+    slow: Annotated[bool, typer.Option(help="Also run slow models (Chronos fine-tuning)")] = False,
+    report: Annotated[Path, typer.Option(help="Markdown report")] = Path(
+        "docs/model_comparison.md"
+    ),
+) -> None:
+    """Compare models from simple baselines to transformers in the same backtest."""
+    from marktradar import benchmark
+
+    cfg = _settings(config)
+    candidates = benchmark.select(models.split(",") if models else None, slow)
+    missing = [c.name for c in candidates if c.heavy and not _benchmark_extra_installed()]
+    if missing:
+        typer.echo(f"Skipping {missing}: run `uv sync --extra benchmark` first.")
+        candidates = [c for c in candidates if not c.heavy]
+    ctx = benchmark.Context(
+        pd.read_parquet(cfg.premiums_path), pd.read_parquet(cfg.insured_path), cfg
+    )
+    with threadpool_limits(cfg.model.n_threads):
+        results = benchmark.run(
+            ctx, pipeline.training_frames(cfg), candidates, cfg.backtest.first_test_year, typer.echo
+        )
+    summary = benchmark.summarize(results)
+    benchmark.save(results, summary, cfg.registry.path / "benchmark.json", report)
+    typer.echo(benchmark.markdown_report(summary))
+
+
+def _benchmark_extra_installed() -> bool:
+    import importlib.util
+
+    return all(importlib.util.find_spec(m) for m in ("torch", "chronos", "tabpfn", "lightgbm"))
+
+
+@app.command()
 def promote(version: str, config: ConfigOpt = None) -> None:
     """Put a specific version into production (e.g. a rollback)."""
     cfg = _settings(config)

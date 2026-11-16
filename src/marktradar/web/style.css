@@ -193,3 +193,15 @@ td.n, th.n { text-align: right; }
 .dp-row.static { cursor: default; }
 .dp-name.static { cursor: default; }
 .dp-name.static:hover { text-decoration: none; }
+
+.figure-title { margin: 48px 0 4px; }
+.barlist { margin-top: 12px; --name-w: 300px; --val-w: 64px; }
+@media (max-width: 600px) { .barlist { --name-w: 150px; --val-w: 52px; } }
+.bl-row { display: grid; grid-template-columns: var(--name-w) 1fr var(--val-w); align-items: center;
+  min-height: 34px; border-bottom: 1px solid var(--grid); }
+.bl-row:hover { background: var(--paper-raised); }
+.bl-name { font-size: 13.5px; padding-right: 12px; line-height: 1.25; }
+.bl-name small { display: block; color: var(--ink-3); font-size: 11.5px; }
+.bl-name b { font-weight: 600; }
+.bl-val { text-align: right; font-size: 13px; color: var(--ink-2); }
+.bl-row svg { display: block; overflow: visible; }

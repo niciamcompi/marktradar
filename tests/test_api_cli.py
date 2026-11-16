@@ -64,6 +64,7 @@ def test_health_model_and_ui(client: TestClient) -> None:
     meta = client.get("/modell").json()
     assert set(meta["horizonte"]) == {"1", "2"} and meta["horizonte_verfuegbar"] == [1, 2]
     assert meta["live_monitoring"] == []
+    assert client.get("/modellvergleich").json() == {"zusammenfassung": [], "pro_jahr": []}
     page = client.get("/")
     assert page.status_code == 200 and "Marktradar" in page.text
     assert client.get("/static/app.js").status_code == 200

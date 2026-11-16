@@ -19,6 +19,15 @@ dependencies = [
     "uvicorn>=0.34.0",
 ]
 
+[project.optional-dependencies]
+# Heavy, only needed for `marktradar compare` (model benchmark incl. transformer models).
+benchmark = [
+    "torch>=2.5",
+    "chronos-forecasting>=2.2",
+    "tabpfn>=2.1",
+    "lightgbm>=4.4",
+]
+
 [project.scripts]
 marktradar = "marktradar.cli:app"
 
@@ -57,3 +66,12 @@ plugins = ["pydantic.mypy"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "--cov=marktradar --cov-report=term-missing"
+
+# PyTorch from the CPU-only index: ~200 MB instead of several GB of CUDA libraries.
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[tool.uv.sources]
+torch = { index = "pytorch-cpu" }

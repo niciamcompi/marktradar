@@ -298,6 +298,7 @@ function renderQuality() {
     rows.map((r) => [r.prognosejahr, nf(1).format(r.mae_modell * 100), nf(1).format(r.mae_konstant * 100),
       nf(2).format(r.rangkorrelation), nf(0).format(r.intervall_abdeckung * 100), r.n_versicherer]));
   renderLive(meta.live_monitoring || []);
+  renderComparison();
   const facts = [
     ["Modellversion", meta.version],
     ["Datenstand", `Versicherte bis ${meta.basisjahr}, genehmigte Prämien bis ${yearOf(Math.max(...meta.horizonte_verfuegbar))}`],
@@ -360,6 +361,54 @@ function renderErrorChart(rows) {
   hit.addEventListener("mouseleave", () => { cross.setAttribute("visibility", "hidden"); hideTip(); });
 }
 
+function renderComparison() {
+  const all = (state.vergleich?.zusammenfassung || []).filter((r) => r.horizont === state.qualityHorizon);
+  $("vergleich").hidden = !all.length;
+  if (!all.length) return;
+  const rows = all.filter((r) => r.modell !== "konstant");
+  const host = $("vergleich-chart");
+  host.innerHTML = "";
+  const vals = rows.map((r) => r.verbesserung_vs_konstant * 100);
+  const lo = Math.min(0, ...vals), hi = Math.max(0, ...vals);
+  const cells = rows.map((r) => {
+    const row = el("div", { class: "bl-row" }, host);
+    const name = el("div", { class: "bl-name" }, row);
+    name.innerHTML = `${r.modell === "gbm" ? "<b>" : ""}${r.name}${r.modell === "gbm" ? "</b>" : ""}` +
+      `<small>${r.familie}${r.jahr_methode ? ` · ${r.jahr_methode}` : ""}</small>`;
+    const cell = el("div", {}, row);
+    el("span", { class: "bl-val", text: `${fmtSigned(r.verbesserung_vs_konstant * 100, 0)} %` }, row);
+    row.addEventListener("mousemove", (e) => showTip(
+      `<b>${r.name}</b><br>Fehler ${nf(1).format(r.mae_modell * 100)} % (Baseline ${nf(1).format(r.mae_konstant * 100)} %)<br>` +
+      `Rangkorrelation ${r.rangkorrelation == null ? "–" : nf(2).format(r.rangkorrelation)}<br>` +
+      `<span class="muted">${nf(1).format(r.sekunden_pro_jahr)} s Rechenzeit pro Testjahr</span>`, e.clientX, e.clientY));
+    row.addEventListener("mouseleave", hideTip);
+    return cell;
+  });
+  const width = cells[0].getBoundingClientRect().width || 300;
+  const pad = 6, x = (v) => pad + ((v - lo) / (hi - lo || 1)) * (width - 2 * pad);
+  rows.forEach((r, i) => {
+    const v = vals[i];
+    const s = el("svg:svg", { width, height: 34 }, cells[i]);
+    el("svg:line", { x1: x(0), x2: x(0), y1: 0, y2: 34, class: "zeroline" }, s);
+    const x0 = Math.min(x(0), x(v)), w = Math.max(1, Math.abs(x(v) - x(0)));
+    // bar with a rounded data end, square at the zero baseline
+    const rad = Math.min(4, w / 2), y0 = 9, bh = 16, right = v >= 0;
+    const d = right
+      ? `M${x0},${y0} h${w - rad} a${rad},${rad} 0 0 1 ${rad},${rad} v${bh - 2 * rad} a${rad},${rad} 0 0 1 ${-rad},${rad} h${-(w - rad)} z`
+      : `M${x0 + w},${y0} h${-(w - rad)} a${rad},${rad} 0 0 0 ${-rad},${rad} v${bh - 2 * rad} a${rad},${rad} 0 0 0 ${rad},${rad} h${w - rad} z`;
+    el("svg:path", { d, fill: v >= 0 ? css("--gain") : css("--loss") }, s);
+  });
+  const ahead = state.qualityHorizon === 1 ? "ein Jahr" : "zwei Jahre";
+  $("vergleich-caption").textContent =
+    `Wie viel kleiner ist der Fehler als bei „Marktanteil bleibt gleich“ (Prognosen ${ahead} im Voraus)? ` +
+    `Alle Modelle im gleichen Backtest; fett = Modell im Einsatz.`;
+  $("vergleich-table").innerHTML = table(
+    ["Modell", "Familie", "Fehler %", "Besser als Baseline", "Rangkorrelation", "80 %-Abdeckung (roh)", "Sekunden/Jahr"],
+    all.map((r) => [r.name, r.familie, nf(1).format(r.mae_modell * 100), `${fmtSigned(r.verbesserung_vs_konstant * 100, 0)} %`,
+      r.rangkorrelation == null ? "–" : nf(2).format(r.rangkorrelation),
+      r.intervall_abdeckung == null ? "–" : `${nf(0).format(r.intervall_abdeckung * 100)} %`, nf(1).format(r.sekunden_pro_jahr)]));
+}
+
 function renderLive(records) {
   const host = $("live");
   if (!records.length) {
@@ -403,8 +452,9 @@ function wire() {
 
 async function init() {
   wire();
-  const [meta, versicherer, kantone] = await Promise.all([api("/modell"), api("/versicherer"), api("/kantone")]);
-  Object.assign(state, { meta, versicherer });
+  const [meta, versicherer, kantone, vergleich] = await Promise.all(
+    [api("/modell"), api("/versicherer"), api("/kantone"), api("/modellvergleich")]);
+  Object.assign(state, { meta, versicherer, vergleich });
   state.horizon = state.qualityHorizon = Math.max(...meta.horizonte_verfuegbar);
   const latest = yearOf(state.horizon);
   $("headline").textContent = `Wer im Grundversicherungsmarkt ${latest} Versicherte gewinnt, und wer verliert.`;
