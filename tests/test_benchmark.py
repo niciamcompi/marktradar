@@ -66,3 +66,10 @@ def test_chronos_inputs_cut_gaps() -> None:
     )
     assert past["jahr"].min() == 2013  # only the gap-free stretch after the hole
     assert np.all(np.diff(past["jahr"]) == 1)
+
+
+def test_chronos_history_only_for_fine_tuning() -> None:
+    hist, cov = benchmark.series_tables(PREMIUMS, BESTAND)
+    items = hist[hist["jahr"] <= 2015][["bag_nr", "kanton"]]
+    past, future = benchmark.chronos_inputs(hist, cov, items, base_year=2015, h=0)
+    assert past["item_id"].nunique() == len(items.drop_duplicates()) and future.empty

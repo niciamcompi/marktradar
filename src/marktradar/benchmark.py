@@ -213,8 +213,10 @@ def chronos_inputs(
     )
     future = cov[(cov["jahr"] > base_year) & (cov["jahr"] <= base_year + h)].copy()
     future["item_id"] = future["bag_nr"].astype(str) + "_" + future["kanton"]
-    complete = future.groupby("item_id")["jahr"].count().eq(h)
-    keep = set(past["item_id"]) & set(complete[complete].index)
+    keep = set(past["item_id"])
+    if h > 0:  # h = 0: history only (used for fine-tuning), no future rows needed
+        complete = future.groupby("item_id")["jahr"].count().eq(h)
+        keep &= set(complete[complete].index)
     past, future = past[past["item_id"].isin(keep)], future[future["item_id"].isin(keep)]
     for df in (past, future):
         df["timestamp"] = pd.to_datetime(df["jahr"].astype(str) + "-01-01")
